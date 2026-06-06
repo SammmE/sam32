@@ -3,10 +3,10 @@
 #include <unordered_map>
 #include <vector>
 
-#include <sam32asm/compiler.hpp>
-#include <sam32asm/lexer.hpp>
+#include <sam32/assembler/compiler.hpp>
+#include <sam32/assembler/lexer.hpp>
 
-namespace sam32asm {
+namespace sam32 {
 struct Parser {
  public:
   std::vector<std::vector<Token>> tokens;
@@ -96,4 +96,4 @@ struct Parser {
   Parser(const std::vector<std::vector<Token>>& tokens);
   void parse(bool verbose = false);
 };
-}  // namespace sam32asm
+}  // namespace sam32

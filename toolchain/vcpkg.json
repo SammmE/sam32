@@ -1,5 +1,5 @@
 {
-  "name": "sam32asm",
+  "name": "sam32",
   "version-string": "0.1.0",
   "dependencies": [
     "cli11",

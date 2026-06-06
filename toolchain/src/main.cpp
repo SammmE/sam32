@@ -7,8 +7,8 @@
 #include <indicators/block_progress_bar.hpp>
 #include <indicators/cursor_control.hpp>
 
-#include "sam32asm/lexer.hpp"
-#include "sam32asm/parser.hpp"
+#include <sam32/assembler/lexer.hpp>
+#include <sam32/assembler/parser.hpp>
 
 int main(int argc, char** argv) {
   CLI::App app;
@@ -38,14 +38,14 @@ int main(int argc, char** argv) {
       indicators::show_console_cursor(false);
     }
 
-    sam32asm::Lexer lexer;
+    sam32::Lexer lexer;
     lexer.lex_file(file_path, verbose);
 
-    sam32asm::Parser parser(lexer.tokens);
+    sam32::Parser parser(lexer.tokens);
     parser.parse(verbose);
 
     std::vector<uint32_t> machine_code =
-        sam32asm::compile_instructions(parser.instructions, verbose);
+        sam32::compile_instructions(parser.instructions, verbose);
 
     if (output_path.empty()) {
       output_path = file_path + ".bin";

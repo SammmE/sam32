@@ -4,7 +4,7 @@
 #include <string>
 #include <vector>
 
-namespace sam32asm {
+namespace sam32 {
 enum TOKEN_TYPE {
   MNEMONIC,
   FS,
@@ -52,4 +52,4 @@ struct Lexer {
   void add_line(std::string line);
   void lex_file(std::string file_path, bool verbose = false);
 };
-}  // namespace sam32asm
+}  // namespace sam32

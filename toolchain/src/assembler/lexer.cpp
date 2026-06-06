@@ -13,9 +13,9 @@ using ::uint8_t;
 #include <indicators/block_progress_bar.hpp>
 #include <indicators/cursor_control.hpp>
 
-#include <sam32asm/lexer.hpp>
+#include <sam32/assembler/lexer.hpp>
 
-namespace sam32asm {
+namespace sam32 {
 namespace {
 int32_t parse_integer_literal(const std::string& text) {
   if (text.empty()) {
@@ -297,4 +297,4 @@ void Lexer::lex_file(std::string file_path, bool verbose) {
     indicators::show_console_cursor(true);
   }
 };
-}  // namespace sam32asm
+}  // namespace sam32

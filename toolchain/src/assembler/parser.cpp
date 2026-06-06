@@ -11,11 +11,11 @@ using ::uint8_t;
 #include <indicators/block_progress_bar.hpp>
 #include <indicators/cursor_control.hpp>
 
-#include <sam32asm/compiler.hpp>
-#include <sam32asm/lexer.hpp>
-#include <sam32asm/parser.hpp>
+#include <sam32/assembler/compiler.hpp>
+#include <sam32/assembler/lexer.hpp>
+#include <sam32/assembler/parser.hpp>
 
-namespace sam32asm {
+namespace sam32 {
 
 namespace {
 std::string lowercase(std::string value) {
@@ -690,4 +690,4 @@ void Parser::parse(bool verbose) {
     }
   }
 };
-}  // namespace sam32asm
+}  // namespace sam32

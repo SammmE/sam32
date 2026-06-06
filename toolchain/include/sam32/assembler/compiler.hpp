@@ -2,9 +2,9 @@
 #include <cstdint>
 #include <unordered_map>
 #include <vector>
-#include "sam32asm/lexer.hpp"
+#include <sam32/assembler/lexer.hpp>
 
-namespace sam32asm {
+namespace sam32 {
 
 constexpr uint32_t CAT_ALU = 0;     // 00
 constexpr uint32_t CAT_BRANCH = 1;  // 01
@@ -34,4 +34,4 @@ public:
 
 std::vector<uint32_t> compile_instructions(
     const std::vector<Instruction>& instructions, bool verbose = false);
-}  // namespace sam32asm
+}  // namespace sam32

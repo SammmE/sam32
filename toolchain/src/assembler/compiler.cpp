@@ -8,9 +8,9 @@ using ::uint8_t;
 #include <indicators/block_progress_bar.hpp>
 #include <indicators/cursor_control.hpp>
 
-#include <sam32asm/compiler.hpp>
+#include <sam32/assembler/compiler.hpp>
 
-namespace sam32asm {
+namespace sam32 {
 Instruction::Instruction(std::vector<Token> tokens, size_t line_number) {
   Rd.type = static_cast<TOKEN_TYPE>(-1);
   Rs1.type = static_cast<TOKEN_TYPE>(-1);
@@ -324,4 +324,4 @@ std::vector<uint32_t> compile_instructions(
   return machine_code;
 };
 
-}  // namespace sam32asm
+}  // namespace sam32
