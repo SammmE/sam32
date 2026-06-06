@@ -1,0 +1,9 @@
+{
+  "name": "sam32asm",
+  "version-string": "0.1.0",
+  "dependencies": [
+    "cli11",
+    "fmt",
+    "indicators"
+  ]
+}
