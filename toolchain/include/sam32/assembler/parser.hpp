@@ -1,6 +1,7 @@
 #pragma once
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include <sam32/assembler/compiler.hpp>
@@ -10,8 +11,11 @@ namespace sam32 {
 struct Parser {
  public:
   std::vector<std::vector<Token>> tokens;
-  std::vector<Instruction> instructions;
-  std::unordered_map<std::string, size_t> label_addresses;
+  std::vector<Org> orgs;
+  std::unordered_map<std::string, std::pair<size_t, size_t>> label_addresses;
+
+  size_t current_org_index = 0;
+  uint32_t align_to = 4;  // default alignment is 4 bytes
 
   inline static const std::vector<TOKEN_TYPE> R_MODEL = {
       TOKEN_TYPE::MNEMONIC, TOKEN_TYPE::COMMA,    TOKEN_TYPE::REGISTER,

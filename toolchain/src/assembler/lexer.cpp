@@ -1,7 +1,6 @@
 #include <algorithm>
 #include <cctype>
 #include <cstdint>
-#include <climits>
 #include <fstream>
 #include <stdexcept>
 #include <string>
@@ -50,7 +49,7 @@ int32_t parse_integer_literal(const std::string& text) {
     }
   }
 
-  if (value < INT32_MIN || value > INT32_MAX) {
+  if (value < INT32_MIN || value > 0xFFFFFFFFLL) {
     throw std::out_of_range("integer literal out of range");
   }
   return static_cast<int32_t>(value);
@@ -78,17 +77,129 @@ void Lexer::add_line(std::string line) {
     // must be a letter, #, or a digit
     // parse until we hit a space, tab, comma, or ';'
     size_t end = cursor;
-    while (end < line.size() && line[end] != ' ' && line[end] != '\t' &&
-           line[end] != ',' && line[end] != ';') {
+    bool in_string = false;
+    while (end < line.size()) {
+      char c = line[end];
+      if (c == '"') {
+        in_string = !in_string;
+      } else if (!in_string &&
+                 (c == ' ' || c == '\t' || c == ',' || c == ';')) {
+        break;
+      }
       end++;
     }
 
     std::string chunk = line.substr(cursor, end - cursor);
 
-    // if the chunk starts with a '#', it's an immediate value
-    // strip the '#' and parse the rest as an int. If the remaining string contains non-digit characters, it's an error (unless it's a hex value starting with 0x)
-    // if the immediate is >8192, it's an error
-    if (chunk[0] == '#') {
+    if (chunk[0] == '.') {
+      // if the chunk starts with a '.', it's a directive
+      std::string directive_str = chunk.substr(1);
+      size_t num_directives = std::size(DIRECTIVES);
+      bool found = false;
+
+      for (size_t i = 0; i < num_directives; i++) {
+        if (directive_str == DIRECTIVES[i]) {
+          line_tokens.push_back({TOKEN_TYPE::DIRECTIVE, directive_str,
+                                 static_cast<int32_t>(i), cursor});
+          found = true;
+          break;
+        }
+      }
+
+      if (!found) {
+        throw std::runtime_error("Invalid directive: " + directive_str +
+                                 " at line " + std::to_string(line_number) +
+                                 ", column " + std::to_string(cursor));
+      }
+    } else if (std::isdigit(chunk[0]) || (chunk[0] == '-' && chunk.size() > 1 &&
+                                          std::isdigit(chunk[1]))) {
+      // if the chunk starts with a digit, it's a number (not immediate! those start w/ #) (e.g. 0x..., 0b..., or decimal)
+      int32_t numeric_value;
+      try {
+        numeric_value = parse_integer_literal(chunk);
+      } catch (const std::invalid_argument& e) {
+        throw std::runtime_error("Invalid immediate value: " + chunk +
+                                 " at line " + std::to_string(line_number) +
+                                 ", column " + std::to_string(cursor));
+      } catch (const std::out_of_range& e) {
+        throw std::runtime_error("Immediate value out of range: " + chunk +
+                                 " at line " + std::to_string(line_number) +
+                                 ", column " + std::to_string(cursor));
+      }
+      line_tokens.push_back(
+          {TOKEN_TYPE::IMMEDIATE, chunk, numeric_value, cursor});
+
+    } else if (chunk[0] == '"') {
+      // if the chunk starts with a '"', it's a string literal. Parse until the closing '"', allowing for escaped quotes (\") and escaped backslashes (\\)
+      std::string str_value;
+      bool escape = false;
+      size_t j = 1;
+      for (; j < chunk.size(); j++) {
+        char c = chunk[j];
+        if (escape) {
+          if (c == '"' || c == '\\') {
+            str_value += c;
+          } else {
+            throw std::runtime_error(
+                "Invalid escape sequence in string literal: \\" +
+                std::string(1, c) + " at line " + std::to_string(line_number) +
+                ", column " + std::to_string(cursor + j));
+          }
+          escape = false;
+        } else {
+          if (c == '\\') {
+            escape = true;
+          } else if (c == '"') {
+            break;
+          } else {
+            str_value += c;
+          }
+        }
+      }
+      if (j == chunk.size() || chunk[j] != '"') {
+        throw std::runtime_error("Unterminated string literal at line " +
+                                 std::to_string(line_number) + ", column " +
+                                 std::to_string(cursor));
+      }
+      line_tokens.push_back({TOKEN_TYPE::STRING, str_value, 0, cursor});
+    } else if (chunk[0] == '\'') {
+      // if the chunk starts with a ''', it's a character literal. It must be exactly 3 characters long (e.g. 'a', '\n', '\\', '\'')
+      if (chunk.size() == 3 && chunk[2] == '\'') {
+        line_tokens.push_back(
+            {TOKEN_TYPE::CHAR, std::string(1, chunk[1]), 0, cursor});
+      } else if (chunk.size() == 4 && chunk[1] == '\\' && chunk[3] == '\'') {
+        char escaped_char;
+        switch (chunk[2]) {
+          case 'n':
+            escaped_char = '\n';
+            break;
+          case 't':
+            escaped_char = '\t';
+            break;
+          case '\\':
+            escaped_char = '\\';
+            break;
+          case '\'':
+            escaped_char = '\'';
+            break;
+          default:
+            throw std::runtime_error(
+                "Invalid escape sequence in character literal: \\" +
+                std::string(1, chunk[2]) + " at line " +
+                std::to_string(line_number) + ", column " +
+                std::to_string(cursor));
+        }
+        line_tokens.push_back(
+            {TOKEN_TYPE::CHAR, std::string(1, escaped_char), 0, cursor});
+      } else {
+        throw std::runtime_error("Invalid character literal at line " +
+                                 std::to_string(line_number) + ", column " +
+                                 std::to_string(cursor));
+      }
+    } else if (chunk[0] == '#') {
+      // if the chunk starts with a '#', it's an immediate value
+      // strip the '#' and parse the rest as an int. If the remaining string contains non-digit characters, it's an error (unless it's a hex value starting with 0x)
+      // if the immediate is >8192, it's an error
       std::string immediate_str = chunk.substr(1);
       int32_t imm_val;
       try {
@@ -138,8 +249,10 @@ void Lexer::add_line(std::string line) {
       }
     }
 
-    // if the register starts with 'R' or 'r', it's a register
-    else if (chunk[0] == 'R' || chunk[0] == 'r') {
+    // if the register starts with 'R' or 'r' AND the rest are digits, it's a register
+    else if ((chunk[0] == 'R' || chunk[0] == 'r') && chunk.size() > 1 &&
+             std::all_of(chunk.begin() + 1, chunk.end(),
+                         [](unsigned char c) { return std::isdigit(c); })) {
       std::string reg_num_str = chunk.substr(1);
       int32_t reg_num_signed;
       try {
@@ -221,11 +334,11 @@ void Lexer::add_line(std::string line) {
       std::transform(chunk_lc.begin(), chunk_lc.end(), chunk_lc.begin(),
                      ::tolower);
 
-      int num_mnemonics = sizeof(MNEMONICS) / sizeof(MNEMONICS[0]);
-      for (int i = 0; i < num_mnemonics; i++) {
+      size_t num_mnemonics = std::size(MNEMONICS);
+      for (size_t i = 0; i < num_mnemonics; i++) {
         if (chunk_lc == MNEMONICS[i]) {
           is_mnemonic = true;
-          mnemonic_val = i;
+          mnemonic_val = static_cast<int32_t>(i);
           break;
         }
       }
@@ -289,7 +402,6 @@ void Lexer::lex_file(std::string file_path, bool verbose) {
       bar.set_progress(static_cast<size_t>(
           (static_cast<double>(current_bytes) / total_bytes) * 100.0));
     }
-
   }
 
   if (verbose) {

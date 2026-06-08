@@ -45,7 +45,7 @@ int main(int argc, char** argv) {
     parser.parse(verbose);
 
     std::vector<uint32_t> machine_code =
-        sam32::compile_instructions(parser.instructions, verbose);
+        sam32::compile_instructions(parser.orgs, verbose);
 
     if (output_path.empty()) {
       output_path = file_path + ".bin";
