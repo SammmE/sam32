@@ -184,10 +184,6 @@
           <string>lastDataFile</string>
           <file>/home/sam/code/SAM32/program.hex</file>
         </entry>
-        <entry>
-          <string>autoReload</string>
-          <boolean>true</boolean>
-        </entry>
       </elementAttributes>
       <pos x="780" y="200"/>
     </visualElement>

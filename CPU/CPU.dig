@@ -5,22 +5,42 @@
   <visualElements>
     <visualElement>
       <elementName>IFU.dig</elementName>
-      <elementAttributes/>
+      <elementAttributes>
+        <entry>
+          <string>Label</string>
+          <string>IFU</string>
+        </entry>
+      </elementAttributes>
       <pos x="180" y="160"/>
     </visualElement>
     <visualElement>
       <elementName>CU.dig</elementName>
-      <elementAttributes/>
+      <elementAttributes>
+        <entry>
+          <string>Label</string>
+          <string>CU</string>
+        </entry>
+      </elementAttributes>
       <pos x="360" y="180"/>
     </visualElement>
     <visualElement>
       <elementName>RegisterFile.dig</elementName>
-      <elementAttributes/>
+      <elementAttributes>
+        <entry>
+          <string>Label</string>
+          <string>RegisterFile</string>
+        </entry>
+      </elementAttributes>
       <pos x="1220" y="620"/>
     </visualElement>
     <visualElement>
       <elementName>ALU.dig</elementName>
-      <elementAttributes/>
+      <elementAttributes>
+        <entry>
+          <string>Label</string>
+          <string>ALU</string>
+        </entry>
+      </elementAttributes>
       <pos x="1400" y="120"/>
     </visualElement>
     <visualElement>
@@ -190,6 +210,10 @@
         <entry>
           <string>rotation</string>
           <rotation rotation="2"/>
+        </entry>
+        <entry>
+          <string>Label</string>
+          <string>BranchHandler</string>
         </entry>
       </elementAttributes>
       <pos x="880" y="120"/>

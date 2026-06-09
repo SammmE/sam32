@@ -9,6 +9,7 @@ add_executable(sam32
   src/assembler/lexer.cpp
   src/assembler/parser.cpp
   src/assembler/compiler.cpp
+  src/emulator/emulator.cpp
 )
 target_sources(sam32 PRIVATE
   src/main.cpp

@@ -7,7 +7,7 @@ Everything is designed and programmed by me, from the ground up. The project has
 1. [LSA](/ISA.md)               ✅
 2. [CPU](/CPU)                  ✅
 3. SystemVerilog
-4. [Assembler](/assembler)      ✅
+4. [Assembler](/toolchain)      ✅
 5. Emulator/Debugger
 6. CPU on an FPGA
 7. Display output
