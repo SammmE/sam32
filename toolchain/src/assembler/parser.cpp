@@ -10,7 +10,7 @@ namespace sam32 {
 
 Parser::Parser(const std::vector<Token>& tokens) : tokens(tokens), pos(0) {
   text_segment = Segment{{}, 0x00000000, 0};
-  data_segment = Segment{{}, 0x10000000, 0};
+  data_segment = Segment{{}, 0x00000000, 0};
   current_segment = &text_segment;
 }
 
@@ -186,6 +186,16 @@ void Parser::parse_directive(Directive directive, const Token& dir_tok) {
         }
 
         Token num = current();
+        if (num.type == TOKEN_IDENTIFIER) {
+          // allow label references in .data directives, but resolve them as
+          // absolute addresses in the second pass
+          current_segment->instructions.push_back(
+              Data(num.value, num.line, current_segment->cursor));
+          current_segment->cursor += size;
+          consume();
+          continue;
+        }
+
         if (num.type != TOKEN_NUMBER && num.type != TOKEN_IMMEDIATE) {
           throw std::runtime_error("Expected numeric value in " +
                                    dir_tok.value + " list at line " +
@@ -207,9 +217,8 @@ void Parser::parse_directive(Directive directive, const Token& dir_tok) {
             std::to_string(dir_tok.line));
       }
       for (char c : str.value) {
-        current_segment->instructions.push_back(
-            Data{static_cast<uint32_t>(static_cast<uint8_t>(c)), 1, str.line,
-                 current_segment->cursor});
+        current_segment->instructions.push_back(Data{
+            static_cast<uint8_t>(c), 1, str.line, current_segment->cursor});
         current_segment->cursor += 1;
       }
       // Null-terminate
@@ -225,7 +234,12 @@ void Parser::parse_directive(Directive directive, const Token& dir_tok) {
         throw std::runtime_error("Expected number after .space at line " +
                                  std::to_string(dir_tok.line));
       }
-      current_segment->cursor += static_cast<size_t>(parse_int(num.value));
+      size_t count = static_cast<size_t>(parse_int(num.value));
+      for (size_t i = 0; i < count; ++i) {
+        current_segment->instructions.push_back(
+            Data{0, 1, dir_tok.line, current_segment->cursor});
+        current_segment->cursor += 1;
+      }
       consume();
     } break;
 
@@ -319,7 +333,7 @@ std::vector<Operand> Parser::parse_operands(bool& has_shift,
 
 // First pass: build instruction stream and populate symbol table.
 // Forward references are stored as labels to be resolved in the second pass.
-void Parser::parse_1() {
+void Parser::parse() {
   while (current().type != TOKEN_EOF) {
     if (current().type == TOKEN_NEWLINE) {
       consume();
@@ -429,18 +443,12 @@ void Parser::parse_1() {
       uint8_t samt = 0;
       std::vector<Operand> operands = parse_operands(has_shift, stype, samt);
 
-      ParsedInstruction instr;
-      instr.mnemonic = mnemonic;
-      instr.operands = std::move(operands);
-      instr.freeze_flag = freeze_flag;
-      instr.has_shift = has_shift;
-      instr.shift_type = stype;
-      instr.shift_amt = samt;
-      instr.addr_offset = current_segment->cursor;
-      instr.line_number = instr_line;
+      ParsedInstruction instr(mnemonic, operands, freeze_flag, has_shift, stype,
+                              samt);
 
-      current_segment->instructions.push_back(std::move(instr));
-      current_segment->cursor += 4;
+      instr.line_number = instr_line;
+      verify_instruction(instr);
+      flush_instruction(instr);
 
       if (current().type == TOKEN_NEWLINE)
         consume();
@@ -455,7 +463,477 @@ void Parser::parse_1() {
   // get the last .text segment offset for the .data segment's start address
   data_segment.addr_base = text_segment.addr_base + text_segment.cursor + 4;
 
-  // PASS 2 - resolve labels, check operand types
+  // PASS 2
+  // resolve label references
+  for (auto& instr_or_data : text_segment.instructions) {
+    if (std::holds_alternative<ParsedInstruction>(instr_or_data)) {
+      ParsedInstruction& instr = std::get<ParsedInstruction>(instr_or_data);
+
+      // Determine if this instruction is a PC-relative J-Type branch
+      bool is_pc_relative_branch =
+          (instr.mnemonic >= M_B && instr.mnemonic <= M_BPL);
+
+      for (Operand& op : instr.operands) {
+        if (op.type == OperandType::LABEL) {
+          auto it = symbol_table.find(op.label);
+          if (it == symbol_table.end()) {
+            throw std::runtime_error("Undefined label '" + op.label +
+                                     "' at line " +
+                                     std::to_string(instr.line_number));
+          }
+
+          size_t target_base = it->second.first ? *(it->second.first) : 0;
+          size_t target_offset = it->second.second;
+          size_t target_addr = target_base + target_offset;
+
+          op.type = OperandType::IMMEDIATE;
+
+          if (op.is_offset && is_pc_relative_branch) {
+            // Calculate relative offset in INSTRUCTIONS
+            size_t current_pc = text_segment.addr_base + instr.addr_offset;
+            int32_t relative_bytes = static_cast<int32_t>(target_addr) -
+                                     static_cast<int32_t>(current_pc);
+
+            if (relative_bytes % 4 != 0) {
+              throw std::runtime_error(
+                  "Branch target is not word-aligned at line " +
+                  std::to_string(instr.line_number));
+            }
+
+            int32_t relative_instructions = relative_bytes / 4;
+            op.value = static_cast<uint32_t>(relative_instructions);
+          } else {
+            if (op.chunk_idx == 1) {
+              target_addr &= 0xFFF;
+            } else if (op.chunk_idx == 2) {
+              target_addr = (target_addr >> 12) & 0xFFF;
+            } else if (op.chunk_idx == 3) {
+              target_addr = (target_addr >> 24) & 0xFF;
+            }
+            op.value = static_cast<uint32_t>(target_addr);
+          }
+        }
+
+        // Range Checking for all IMMEDIATE operands
+        if (op.type == OperandType::IMMEDIATE) {
+          int32_t signed_val = static_cast<int32_t>(op.value);
+
+          if (op.is_offset && is_pc_relative_branch) {
+            // 18-bit signed branch offset (instructions)
+            if (signed_val < -131072 || signed_val > 131071) {
+              throw std::runtime_error(
+                  "Branch offset out of range (+-131,072 instructions) at "
+                  "line " +
+                  std::to_string(instr.line_number));
+            }
+          } else if (op.is_offset) {
+            // 13-bit signed memory offset (bytes)
+            if (signed_val < -4096 || signed_val > 4095) {
+              throw std::runtime_error(
+                  "Memory offset out of range (+-4,096 bytes) at line " +
+                  std::to_string(instr.line_number));
+            }
+          } else {
+            // 13-bit signed ALU immediate
+            if (signed_val < -4096 || signed_val > 4095) {
+              throw std::runtime_error(
+                  "Immediate value out of range (+-4,096) at line " +
+                  std::to_string(instr.line_number));
+            }
+          }
+        }
+
+        if (op.type == OperandType::REGISTER && op.reg_id > 31) {
+          throw std::runtime_error("Register number out of range at line " +
+                                   std::to_string(instr.line_number));
+        }
+      }
+    } else {
+      Data& data = std::get<Data>(instr_or_data);
+      if (data.value.type == OperandType::LABEL) {
+        auto it = symbol_table.find(data.value.label);
+        if (it == symbol_table.end()) {
+          throw std::runtime_error("Undefined label '" + data.value.label +
+                                   "' at line " +
+                                   std::to_string(data.line_number));
+        }
+        size_t base = it->second.first ? *(it->second.first) : 0;
+        size_t offset = it->second.second;
+        data.value.type = OperandType::IMMEDIATE;
+        data.value.value = static_cast<uint32_t>(base + offset);
+      }
+    }
+  }
+}
+
+void Parser::flush_instruction(ParsedInstruction& instr) {
+  std::vector<ParsedInstruction> expanded_instrs;
+  bool is_pseudo = false;
+
+  switch (instr.mnemonic) {
+    case M_NOP:
+      expanded_instrs.push_back(ParsedInstruction(
+          M_ADD,
+          {Operand::Register(0), Operand::Register(0), Operand::Immediate(0)},
+          false, false, SHIFT_LSL, 0));
+      is_pseudo = true;
+      break;
+
+    case M_MOV:
+      expanded_instrs.push_back(ParsedInstruction(
+          M_ADD,
+          {instr.operands.at(0), instr.operands.at(1), Operand::Immediate(0)},
+          false, false, SHIFT_LSL, 0));
+      is_pseudo = true;
+      break;
+
+    case M_CLR:
+      expanded_instrs.push_back(ParsedInstruction(
+          M_ADD,
+          {instr.operands.at(0), Operand::Register(0), Operand::Immediate(0)},
+          false, false, SHIFT_LSL, 0));
+      is_pseudo = true;
+      break;
+
+    case M_NEG:
+      expanded_instrs.push_back(ParsedInstruction(
+          M_SUB,
+          {instr.operands.at(0), Operand::Immediate(0), instr.operands.at(1)},
+          false, false, SHIFT_LSL, 0));
+      is_pseudo = true;
+      break;
+
+    case M_LI: {
+      uint32_t val32 = 0;
+      bool is_label = false;
+      std::string label_name = "";
+
+      const Operand& rd = instr.operands.at(0);
+      const Operand& src = instr.operands.at(1);
+
+      if (src.type == OperandType::IMMEDIATE) {
+        val32 = src.value;
+      } else if (src.type == OperandType::LABEL) {
+        is_label = true;
+        label_name = src.label;
+        auto it = symbol_table.find(label_name);
+        if (it != symbol_table.end()) {
+          size_t base = it->second.first ? *(it->second.first) : 0;
+          if (it->second.first == &data_segment.addr_base && base == 0) {
+            base = text_segment.addr_base + text_segment.cursor + 4;
+          }
+          val32 = static_cast<uint32_t>(base + it->second.second);
+        } else {
+          val32 = 0xFFFFFFFF;
+        }
+      }
+
+      uint32_t c0 = val32 & 0xFFF;
+      uint32_t c1 = (val32 >> 12) & 0xFFF;
+      uint32_t c2 = (val32 >> 24) & 0xFF;
+
+      auto make_op = [&](uint32_t val, uint8_t chunk_idx) {
+        if (is_label) {
+          return Operand::Label(label_name, false, chunk_idx);
+        }
+        return Operand::Immediate(val);
+      };
+
+      if (c2 != 0) {
+        expanded_instrs.push_back(ParsedInstruction(M_OR, {rd, Operand::Register(0), make_op(c2, 3)}, false, false, SHIFT_LSL, 0));
+        expanded_instrs.push_back(ParsedInstruction(M_OR, {rd, Operand::Register(0), rd}, false, true, SHIFT_LSL, 12));
+        expanded_instrs.push_back(ParsedInstruction(M_OR, {rd, rd, make_op(c1, 2)}, false, false, SHIFT_LSL, 0));
+        expanded_instrs.push_back(ParsedInstruction(M_OR, {rd, Operand::Register(0), rd}, false, true, SHIFT_LSL, 12));
+        expanded_instrs.push_back(ParsedInstruction(M_OR, {rd, rd, make_op(c0, 1)}, false, false, SHIFT_LSL, 0));
+      } else if (c1 != 0) {
+        expanded_instrs.push_back(ParsedInstruction(M_OR, {rd, Operand::Register(0), make_op(c1, 2)}, false, false, SHIFT_LSL, 0));
+        expanded_instrs.push_back(ParsedInstruction(M_OR, {rd, Operand::Register(0), rd}, false, true, SHIFT_LSL, 12));
+        expanded_instrs.push_back(ParsedInstruction(M_OR, {rd, rd, make_op(c0, 1)}, false, false, SHIFT_LSL, 0));
+      } else {
+        expanded_instrs.push_back(ParsedInstruction(M_OR, {rd, Operand::Register(0), make_op(c0, 1)}, false, false, SHIFT_LSL, 0));
+      }
+      is_pseudo = true;
+      break;
+    }
+
+    case M_PUSH:
+      expanded_instrs.push_back(ParsedInstruction(
+          M_SUB,
+          {Operand::Register(31), Operand::Register(31), Operand::Immediate(4)},
+          false, false, SHIFT_LSL, 0));
+      expanded_instrs.push_back(
+          ParsedInstruction(M_SW,
+                            {instr.operands.at(0), Operand::Register(31),
+                             Operand::Immediate(0, true)},
+                            false, false, SHIFT_LSL, 0));
+      is_pseudo = true;
+      break;
+
+    case M_POP:
+      expanded_instrs.push_back(
+          ParsedInstruction(M_LW,
+                            {instr.operands.at(0), Operand::Register(31),
+                             Operand::Immediate(0, true)},
+                            false, false, SHIFT_LSL, 0));
+      expanded_instrs.push_back(ParsedInstruction(
+          M_ADD,
+          {Operand::Register(31), Operand::Register(31), Operand::Immediate(4)},
+          false, false, SHIFT_LSL, 0));
+      is_pseudo = true;
+      break;
+
+    case M_LSL:
+      expanded_instrs.push_back(ParsedInstruction(
+          M_ADD,
+          {instr.operands.at(0), Operand::Register(0), instr.operands.at(1)},
+          false, true, SHIFT_LSL,
+          static_cast<uint8_t>(instr.operands.at(2).value)));
+      is_pseudo = true;
+      break;
+
+    case M_LSR:
+      expanded_instrs.push_back(ParsedInstruction(
+          M_ADD,
+          {instr.operands.at(0), Operand::Register(0), instr.operands.at(1)},
+          false, true, SHIFT_LSR,
+          static_cast<uint8_t>(instr.operands.at(2).value)));
+      is_pseudo = true;
+      break;
+
+    case M_ASR:
+      expanded_instrs.push_back(ParsedInstruction(
+          M_ADD,
+          {instr.operands.at(0), Operand::Register(0), instr.operands.at(1)},
+          false, true, SHIFT_ASR,
+          static_cast<uint8_t>(instr.operands.at(2).value)));
+      is_pseudo = true;
+      break;
+
+    case M_ROR:
+      expanded_instrs.push_back(ParsedInstruction(
+          M_ADD,
+          {instr.operands.at(0), Operand::Register(0), instr.operands.at(1)},
+          false, true, SHIFT_ROR,
+          static_cast<uint8_t>(instr.operands.at(2).value)));
+      is_pseudo = true;
+      break;
+
+    case M_INC:
+      expanded_instrs.push_back(ParsedInstruction(
+          M_ADD,
+          {instr.operands.at(0), instr.operands.at(0), Operand::Immediate(1)},
+          false, false, SHIFT_LSL, 0));
+      is_pseudo = true;
+      break;
+
+    case M_DEC:
+      expanded_instrs.push_back(ParsedInstruction(
+          M_SUB,
+          {instr.operands.at(0), instr.operands.at(0), Operand::Immediate(1)},
+          false, false, SHIFT_LSL, 0));
+      is_pseudo = true;
+      break;
+
+    case M_CMP:
+      expanded_instrs.push_back(ParsedInstruction(
+          M_SUB,
+          {Operand::Register(0), instr.operands.at(0), instr.operands.at(1)},
+          false, false, SHIFT_LSL, 0));
+      is_pseudo = true;
+      break;
+
+    case M_CMN:
+      expanded_instrs.push_back(ParsedInstruction(
+          M_ADD,
+          {Operand::Register(0), instr.operands.at(0), instr.operands.at(1)},
+          false, false, SHIFT_LSL, 0));
+      is_pseudo = true;
+      break;
+
+    case M_TST:
+      expanded_instrs.push_back(ParsedInstruction(
+          M_AND,
+          {Operand::Register(0), instr.operands.at(0), instr.operands.at(1)},
+          false, false, SHIFT_LSL, 0));
+      is_pseudo = true;
+      break;
+
+    case M_TEQ:
+      expanded_instrs.push_back(ParsedInstruction(
+          M_XOR,
+          {Operand::Register(0), instr.operands.at(0), instr.operands.at(1)},
+          false, false, SHIFT_LSL, 0));
+      is_pseudo = true;
+      break;
+
+    case M_JMP:
+      expanded_instrs.push_back(
+          ParsedInstruction(M_B, {Operand::Register(0), instr.operands.at(0)},
+                            false, false, SHIFT_LSL, 0));
+      is_pseudo = true;
+      break;
+
+    case M_CALL:
+      expanded_instrs.push_back(
+          ParsedInstruction(M_B, {Operand::Register(30), instr.operands.at(0)},
+                            false, false, SHIFT_LSL, 0));
+      is_pseudo = true;
+      break;
+
+    case M_RET:
+      expanded_instrs.push_back(ParsedInstruction(M_BR, {Operand::Register(30)},
+                                                  false, false, SHIFT_LSL, 0));
+      is_pseudo = true;
+      break;
+
+    case M_BEQZ:
+      expanded_instrs.push_back(ParsedInstruction(
+          M_SUB,
+          {Operand::Register(0), instr.operands.at(0), Operand::Register(0)},
+          false, false, SHIFT_LSL, 0));
+      expanded_instrs.push_back(
+          ParsedInstruction(M_BEQ, {Operand::Register(0), instr.operands.at(1)},
+                            false, false, SHIFT_LSL, 0));
+      is_pseudo = true;
+      break;
+
+    case M_BNEZ:
+      expanded_instrs.push_back(ParsedInstruction(
+          M_SUB,
+          {Operand::Register(0), instr.operands.at(0), Operand::Register(0)},
+          false, false, SHIFT_LSL, 0));
+      expanded_instrs.push_back(
+          ParsedInstruction(M_BNE, {Operand::Register(0), instr.operands.at(1)},
+                            false, false, SHIFT_LSL, 0));
+      is_pseudo = true;
+      break;
+
+    case M_ABS:
+      expanded_instrs.push_back(ParsedInstruction(
+          M_ADD,
+          {instr.operands.at(0), instr.operands.at(1), Operand::Immediate(0)},
+          false, false, SHIFT_LSL, 0));
+      expanded_instrs.push_back(ParsedInstruction(
+          M_SUB,
+          {Operand::Register(0), instr.operands.at(0), Operand::Register(0)},
+          false, false, SHIFT_LSL, 0));
+      expanded_instrs.push_back(ParsedInstruction(
+          M_BGE, {Operand::Register(0), Operand::Immediate(2, true)}, false,
+          false, SHIFT_LSL, 0));
+      expanded_instrs.push_back(ParsedInstruction(
+          M_SUB,
+          {instr.operands.at(0), Operand::Immediate(0), instr.operands.at(0)},
+          false, false, SHIFT_LSL, 0));
+      is_pseudo = true;
+      break;
+
+    case M_SEQ:
+      expanded_instrs.push_back(ParsedInstruction(
+          M_SUB,
+          {Operand::Register(0), instr.operands.at(1), instr.operands.at(2)},
+          false, false, SHIFT_LSL, 0));
+      expanded_instrs.push_back(ParsedInstruction(
+          M_ADD,
+          {instr.operands.at(0), Operand::Register(0), Operand::Immediate(1)},
+          false, false, SHIFT_LSL, 0));
+      expanded_instrs.push_back(ParsedInstruction(
+          M_BNE, {Operand::Register(0), Operand::Immediate(2, true)}, false,
+          false, SHIFT_LSL, 0));
+      expanded_instrs.push_back(ParsedInstruction(
+          M_ADD,
+          {instr.operands.at(0), Operand::Register(0), Operand::Immediate(0)},
+          false, false, SHIFT_LSL, 0));
+      is_pseudo = true;
+      break;
+    case M_PUSHM:
+    case M_POPM:
+    case M_SWAP:
+      throw std::runtime_error("Macro '" + mnemonic_names[instr.mnemonic] +
+                               "' is not yet implemented.");
+
+    default:
+      break;  // Not a pseudo-op, handle normally
+  }
+
+  if (is_pseudo) {
+    for (auto& pi : expanded_instrs) {
+      pi.line_number = instr.line_number;
+      verify_instruction(pi);
+      pi.addr_offset = current_segment->cursor;
+      current_segment->instructions.push_back(pi);
+      current_segment->cursor += 4;
+    }
+  } else {
+    instr.addr_offset = current_segment->cursor;
+    current_segment->instructions.push_back(std::move(instr));
+    current_segment->cursor += 4;
+  }
+}
+
+void Parser::verify_instruction(ParsedInstruction& instr) {
+  auto it = std::find_if(SIGNATURES.begin(), SIGNATURES.end(),
+                         [&instr](const InstructionSignature& sig) {
+                           return sig.mnemonic == instr.mnemonic;
+                         });
+
+  if (it == SIGNATURES.end()) {
+    throw std::runtime_error(
+        "Internal error: no signature for instruction " +
+        mnemonic_names[static_cast<size_t>(instr.mnemonic)]);
+  }
+
+  if (instr.freeze_flag &&
+      std::any_of(instr.operands.begin(), instr.operands.end(),
+                  [](const Operand& op) {
+                    return op.type == OperandType::IMMEDIATE;
+                  })) {
+    throw std::runtime_error(
+        "Freeze flag (.F) cannot be set for I-Type (Immediate) instructions at "
+        "line " +
+        std::to_string(instr.line_number));
+  }
+
+  const InstructionSignature& sig = *it;
+
+  for (const auto& valid_pattern : sig.operand_patterns) {
+    if (valid_pattern.size() == instr.operands.size()) {
+      bool pattern_matches = true;
+      for (size_t i = 0; i < valid_pattern.size(); ++i) {
+        OperandType expected = valid_pattern[i];
+        OperandType actual = instr.operands[i].type;
+
+        bool expected_is_numeric = (expected == OperandType::IMMEDIATE ||
+                                    expected == OperandType::LABEL);
+        bool actual_is_numeric =
+            (actual == OperandType::IMMEDIATE || actual == OperandType::LABEL);
+
+        if (expected_is_numeric && actual_is_numeric) {
+          continue;
+        }
+
+        if (expected != actual) {
+          pattern_matches = false;
+          break;
+        }
+      }
+
+      if (pattern_matches) {
+        if (sig.is_offset) {
+          for (size_t i = 0; i < instr.operands.size(); ++i) {
+            if (instr.operands[i].type == OperandType::IMMEDIATE ||
+                instr.operands[i].type == OperandType::LABEL) {
+              instr.operands[i].is_offset = true;
+            }
+          }
+        }
+        return;
+      }
+    }
+  }
+
+  throw std::runtime_error("Invalid operand types for instruction " +
+                           mnemonic_names[static_cast<size_t>(instr.mnemonic)] +
+                           " at line " + std::to_string(instr.line_number));
 }
 
 }  // namespace sam32

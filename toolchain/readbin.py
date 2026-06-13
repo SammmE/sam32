@@ -1,4 +1,4 @@
-with open("./program.asm.bin", mode='rb') as file:
+with open("./program.bin", mode='rb') as file:
     fileContent = file.read()
     
     # Loop through the file 4 bytes at a time

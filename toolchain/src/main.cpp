@@ -4,11 +4,9 @@
 #include <filesystem>
 #include <string>
 
-#include <indicators/block_progress_bar.hpp>
-#include <indicators/cursor_control.hpp>
-
 #include <sam32/assembler/lexer.hpp>
 #include <sam32/assembler/parser.hpp>
+#include "sam32/assembler/compiler.hpp"
 
 int main(int argc, char** argv) {
   CLI::App app;
@@ -33,15 +31,11 @@ int main(int argc, char** argv) {
       return;
     }
 
-    if (verbose) {
-      fmt::println("Starting compilation of {}", file_path);
-      indicators::show_console_cursor(false);
-    }
-
     sam32::Lexer lexer(file_path);
     lexer.tokenize();
 
-    if (verbose) fmt::println("Lexed {} tokens", lexer.tokens.size());
+    if (verbose)
+      fmt::println("Lexed {} tokens", lexer.tokens.size());
 
     sam32::Parser parser(lexer.tokens);
     parser.parse();
@@ -52,30 +46,16 @@ int main(int argc, char** argv) {
                    parser.data_segment.instructions.size());
     }
 
-    // TODO: compiler (second pass + binary emission) not yet implemented.
-    std::vector<uint32_t> machine_code;
+    std::vector<uint8_t> machine_code =
+        sam32::encode(parser.text_segment, parser.data_segment);
 
     if (output_path.empty()) {
-      output_path = file_path + ".bin";
+      output_path = file_path.substr(0, file_path.find_last_of('.')) + ".bin";
     }
 
-    indicators::BlockProgressBar bar{
-        indicators::option::BarWidth{80},
-        indicators::option::Start{"["},
-        indicators::option::End{"]"},
-        indicators::option::ForegroundColor{indicators::Color::white},
-        indicators::option::ShowPercentage{true},
-        indicators::option::FontStyles{
-            std::vector<indicators::FontStyle>{indicators::FontStyle::bold}}};
-
     std::ofstream output_file(output_path, std::ios::binary);
-    for (uint32_t instr : machine_code) {
-      output_file.write(reinterpret_cast<const char*>(&instr), sizeof(instr));
-
-      if (verbose) {
-        bar.set_progress((output_file.tellp() * 100) /
-                         (machine_code.size() * sizeof(uint32_t)));
-      }
+    for (uint8_t byte : machine_code) {
+      output_file.put(byte);
     }
     output_file.close();
     fmt::println("Compiled machine code written to {}", output_path);

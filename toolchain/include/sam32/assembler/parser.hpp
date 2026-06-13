@@ -1,6 +1,9 @@
 #pragma once
 
+#include <algorithm>
 #include <cstdint>
+#include <functional>
+#include <stdexcept>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -25,6 +28,8 @@ struct Operand {
   int reg_id;
   uint32_t value;
   std::string label;
+  bool is_offset = false;  ///< for memory operands, is the immediate an offset?
+  uint8_t chunk_idx = 0;   ///< 0: full, 1: C0, 2: C1, 3: C2 for LI macro
 
   static Operand Register(int reg_id) {
     return Operand{OperandType::REGISTER, reg_id, 0, ""};
@@ -32,12 +37,13 @@ struct Operand {
 
   // Accept signed int32_t so that negative immediates (e.g. #-4) are stored
   // correctly in the lower 32 bits via two's complement bit pattern.
-  static Operand Immediate(int32_t value) {
-    return Operand{OperandType::IMMEDIATE, 0, static_cast<uint32_t>(value), ""};
+  static Operand Immediate(int32_t value, bool is_offset = false) {
+    return Operand{OperandType::IMMEDIATE, 0, static_cast<uint32_t>(value), "",
+                   is_offset};
   }
 
-  static Operand Label(const std::string& label) {
-    return Operand{OperandType::LABEL, 0, 0, label};
+  static Operand Label(const std::string& label, bool is_offset = false, uint8_t chunk_idx = 0) {
+    return Operand{OperandType::LABEL, 0, 0, label, is_offset, chunk_idx};
   }
 };
 
@@ -96,21 +102,31 @@ enum Mnemonic {
   // pseudo-instructions
   M_NOP,
   M_MOV,
+  M_CLR,
   M_NEG,
   M_LI,
   M_PUSH,
   M_POP,
+  M_PUSHM,
+  M_POPM,
   M_LSL,
   M_LSR,
   M_ASR,
   M_ROR,
   M_INC,
   M_DEC,
+  M_SWAP,
   M_CMP,
+  M_CMN,
   M_TST,
+  M_TEQ,
   M_JMP,
   M_CALL,
-  M_RET
+  M_RET,
+  M_BEQZ,
+  M_BNEZ,
+  M_ABS,
+  M_SEQ
 };
 
 const std::string mnemonic_names[] = {
@@ -129,8 +145,9 @@ const std::string mnemonic_names[] = {
     "sb", "sh", "sw", "lb", "lbu", "lh", "lhu", "lw",
 
     // pseudo-instructions
-    "nop", "mov", "neg", "li", "push", "pop", "lsl", "lsr", "asr", "ror", "inc",
-    "dec", "cmp", "tst", "jmp", "call", "ret"};
+    "nop", "mov", "clr", "neg", "li", "push", "pop", "pushm", "popm", "lsl",
+    "lsr", "asr", "ror", "inc", "dec", "swap", "cmp", "cmn", "tst", "teq",
+    "jmp", "call", "ret", "beqz", "bnez", "abs", "seq"};
 
 enum Directive {
   D_DATA,
@@ -182,19 +199,41 @@ struct ParsedInstruction {
 
   size_t addr_offset = 0;  ///< byte offset from segment base at parse time
   size_t line_number = 0;
+
+  ParsedInstruction(Mnemonic m, std::vector<Operand> ops, bool freeze = false,
+                    bool has_shift = false, ShiftType st = SHIFT_LSL,
+                    uint8_t sa = 0)
+      : mnemonic(m),
+        operands(std::move(ops)),
+        freeze_flag(freeze),
+        has_shift(has_shift),
+        shift_type(st),
+        shift_amt(sa) {}
 };
 
 struct Data {
-  uint32_t value;  ///< raw numeric payload
-  uint8_t size;    ///< byte width: 1 (.byte), 2 (.half), 4 (.word)
+  Operand value;  ///< payload
+  uint8_t size;   ///< byte width: 1 (.byte), 2 (.half), 4 (.word)
   size_t line_number;
   size_t addr_offset;
+
+  Data(uint32_t val, uint8_t sz, size_t line, size_t offset)
+      : value(Operand::Immediate(val)),
+        size(sz),
+        line_number(line),
+        addr_offset(offset) {}
+
+  Data(std::string str, size_t line, size_t offset)
+      : value(Operand::Label(str)),
+        size(1),
+        line_number(line),
+        addr_offset(offset) {}
 };
 
 struct Segment {
   std::vector<std::variant<ParsedInstruction, Data>> instructions;
-  size_t addr_base;
-  size_t cursor;
+  size_t addr_base = 0;
+  size_t cursor = 0;
 };
 
 enum INSTRUCTION_CATEGORY { CAT_ALU, CAT_BRANCH, CAT_MEM, CAT_PSEUDO };
@@ -216,8 +255,7 @@ struct Parser {
   /// First pass: tokenize all statements, build segment instruction lists,
   /// and populate symbol_table with label definitions seen so far.
   /// Forward references are stored as Operand::Label for the second pass.
-  void parse_1();
-  void parse_2();
+  void parse();
 
  private:
   Token current() const;
@@ -230,10 +268,10 @@ struct Parser {
   std::vector<Operand> parse_operands(bool& has_shift, ShiftType& shift_type,
                                       uint8_t& shift_amt);
 
-  std::vector<ParsedInstruction> result_pseudo_instructions(
-      const ParsedInstruction& instr);
-
   void check_operand_types(const ParsedInstruction& instr);
+
+  void verify_instruction(ParsedInstruction& instr);
+  void flush_instruction(ParsedInstruction& instr);
 };
 
 inline const std::vector<InstructionSignature> SIGNATURES = {
@@ -583,6 +621,57 @@ inline const std::vector<InstructionSignature> SIGNATURES = {
                          false},
     InstructionSignature{M_JMP, {{OperandType::LABEL}}, true, false, false},
     InstructionSignature{M_CALL, {{OperandType::LABEL}}, true, false, false},
-    InstructionSignature{M_RET, {{}}, false, false, false}};
+    InstructionSignature{M_RET, {{}}, false, false, false},
+
+    // pseudo-instructions
+    InstructionSignature{M_CLR, {{OperandType::REGISTER}}, false, false, false},
+    InstructionSignature{M_PUSHM,
+                         {{}},
+                         false,
+                         false,
+                         false},  // Stubbed, throws in switch
+    InstructionSignature{M_POPM,
+                         {{}},
+                         false,
+                         false,
+                         false},  // Stubbed, throws in switch
+    InstructionSignature{M_SWAP,
+                         {{OperandType::REGISTER, OperandType::REGISTER}},
+                         false,
+                         false,
+                         false},
+    InstructionSignature{M_CMN,
+                         {{OperandType::REGISTER, OperandType::REGISTER}},
+                         false,
+                         false,
+                         false},
+    InstructionSignature{M_TEQ,
+                         {{OperandType::REGISTER, OperandType::REGISTER}},
+                         false,
+                         false,
+                         false},
+    InstructionSignature{M_BEQZ,
+                         {{OperandType::REGISTER, OperandType::LABEL},
+                          {OperandType::REGISTER, OperandType::IMMEDIATE}},
+                         true,
+                         false,
+                         false},
+    InstructionSignature{M_BNEZ,
+                         {{OperandType::REGISTER, OperandType::LABEL},
+                          {OperandType::REGISTER, OperandType::IMMEDIATE}},
+                         true,
+                         false,
+                         false},
+    InstructionSignature{M_ABS,
+                         {{OperandType::REGISTER, OperandType::REGISTER}},
+                         false,
+                         false,
+                         false},
+    InstructionSignature{
+        M_SEQ,
+        {{OperandType::REGISTER, OperandType::REGISTER, OperandType::REGISTER}},
+        false,
+        false,
+        false}};
 
 }  // namespace sam32

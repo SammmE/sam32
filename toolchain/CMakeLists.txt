@@ -25,7 +25,3 @@ target_link_libraries(sam32 PRIVATE fmt::fmt)
 # CLI11
 find_package(CLI11 CONFIG REQUIRED)
 target_link_libraries(sam32 PRIVATE CLI11::CLI11)
-
-# indicators
-find_package(indicators CONFIG REQUIRED)
-target_link_libraries(sam32 PRIVATE indicators::indicators)
