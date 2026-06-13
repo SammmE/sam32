@@ -38,14 +38,22 @@ int main(int argc, char** argv) {
       indicators::show_console_cursor(false);
     }
 
-    sam32::Lexer lexer;
-    lexer.lex_file(file_path, verbose);
+    sam32::Lexer lexer(file_path);
+    lexer.tokenize();
+
+    if (verbose) fmt::println("Lexed {} tokens", lexer.tokens.size());
 
     sam32::Parser parser(lexer.tokens);
-    parser.parse(verbose);
+    parser.parse();
 
-    std::vector<uint32_t> machine_code =
-        sam32::compile_instructions(parser.orgs, verbose);
+    if (verbose) {
+      fmt::println("Parsed {} text instructions, {} data items",
+                   parser.text_segment.instructions.size(),
+                   parser.data_segment.instructions.size());
+    }
+
+    // TODO: compiler (second pass + binary emission) not yet implemented.
+    std::vector<uint32_t> machine_code;
 
     if (output_path.empty()) {
       output_path = file_path + ".bin";
