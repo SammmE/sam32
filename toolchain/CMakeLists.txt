@@ -31,7 +31,7 @@ if(WEB_BUILD OR EMSCRIPTEN)
   target_link_libraries(sam32_web PRIVATE fmt::fmt imgui::imgui SDL3::SDL3)
 
   # Emscripten specific link flags
-  set_target_properties(sam32_web PROPERTIES SUFFIX ".html")
+  set_target_properties(sam32_web PROPERTIES OUTPUT_NAME "index" SUFFIX ".html")
   target_link_options(sam32_web PRIVATE
     "-sUSE_WEBGL2=1"
     "-sALLOW_MEMORY_GROWTH=1"
