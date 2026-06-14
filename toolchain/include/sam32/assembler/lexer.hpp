@@ -31,13 +31,9 @@ struct Lexer {
   std::vector<Token> tokens;
   size_t position = 0;
 
-  Lexer(const std::string& filename);
+  Lexer(const std::string& line) : input(line) {};
   Lexer(const std::vector<std::string>& lines);
 
   void tokenize();
 };
-
-bool is_number(const std::string& str);
-std::string read_file(const std::string& filename);
-
 }  // namespace sam32

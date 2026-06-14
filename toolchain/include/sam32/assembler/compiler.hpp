@@ -2,14 +2,28 @@
 
 #include <cstdint>
 #include <unordered_map>
+#include <variant>
 #include <vector>
 
 #include "sam32/assembler/parser.hpp"
 
 namespace sam32 {
+struct LstRow {
+  size_t address;
+  uint32_t instruction;
+  std::variant<ParsedInstruction, Data> parsed;
+
+  LstRow(size_t addr, uint32_t instr, const ParsedInstruction& parsed_instr)
+      : address(addr), instruction(instr), parsed(parsed_instr) {}
+
+  LstRow(size_t addr, uint32_t instr, const Data& data)
+      : address(addr), instruction(instr), parsed(data) {}
+};
+
 uint32_t encode_instruction(const ParsedInstruction& instr);
-std::vector<uint8_t> encode(const Segment& text_segment,
+std::pair<std::vector<uint8_t>, std::vector<LstRow>> encode(const Segment& text_segment,
                             const Segment& data_segment);
+
 }  // namespace sam32
 
 inline std::unordered_map<sam32::Mnemonic, uint32_t> opcode_map = {

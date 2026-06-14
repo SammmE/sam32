@@ -1,56 +1,11 @@
-#include <algorithm>
 #include <cctype>
-#include <fstream>
-#include <sstream>
 #include <stdexcept>
 #include <string>
 
 #include <sam32/assembler/lexer.hpp>
+#include <sam32/utils/utils.hpp>
 
 namespace sam32 {
-
-bool is_number(const std::string& str) {
-  if (str.empty()) return false;
-
-  size_t start = 0;
-  if (str[0] == '-') {
-    if (str.size() == 1) return false;
-    start = 1;
-  }
-
-  const std::string body = str.substr(start);
-
-  if (std::all_of(body.begin(), body.end(),
-                  [](unsigned char c) { return std::isdigit(c); })) {
-    return true;
-  }
-  if (body.size() > 2 && body.substr(0, 2) == "0x" &&
-      std::all_of(body.begin() + 2, body.end(),
-                  [](unsigned char c) { return std::isxdigit(c); })) {
-    return true;
-  }
-  if (body.size() > 2 && body.substr(0, 2) == "0b" &&
-      std::all_of(body.begin() + 2, body.end(),
-                  [](unsigned char c) { return c == '0' || c == '1'; })) {
-    return true;
-  }
-
-  return false;
-}
-
-std::string read_file(const std::string& filename) {
-  std::ifstream file(filename);
-  if (!file.is_open()) {
-    throw std::runtime_error("Failed to open file: " + filename);
-  }
-
-  std::stringstream buffer;
-  buffer << file.rdbuf();
-  file.close();
-  return buffer.str();
-}
-
-Lexer::Lexer(const std::string& filename) : input(read_file(filename)) {}
 
 Lexer::Lexer(const std::vector<std::string>& lines) {
   input = "";
@@ -113,13 +68,28 @@ void Lexer::tokenize() {
           char c = input[position];
           if (escaped) {
             switch (c) {
-              case 'n':  str += '\n'; break;
-              case 't':  str += '\t'; break;
-              case 'r':  str += '\r'; break;
-              case '0':  str += '\0'; break;
-              case '\\': str += '\\'; break;
-              case '"':  str += '"';  break;
-              default:   str += '\\'; str += c; break;
+              case 'n':
+                str += '\n';
+                break;
+              case 't':
+                str += '\t';
+                break;
+              case 'r':
+                str += '\r';
+                break;
+              case '0':
+                str += '\0';
+                break;
+              case '\\':
+                str += '\\';
+                break;
+              case '"':
+                str += '"';
+                break;
+              default:
+                str += '\\';
+                str += c;
+                break;
             }
             escaped = false;
             position++;
@@ -211,9 +181,9 @@ void Lexer::tokenize() {
           }
           tokens.emplace_back(TOKEN_NUMBER, number, line, start_col);
         } else {
-          throw std::runtime_error(std::string("Unexpected character '-' at line ") +
-                                   std::to_string(line) + ", column " +
-                                   std::to_string(column));
+          throw std::runtime_error(
+              std::string("Unexpected character '-' at line ") +
+              std::to_string(line) + ", column " + std::to_string(column));
         }
       } break;
 
@@ -273,8 +243,7 @@ void Lexer::tokenize() {
             }
             if (!suffix.empty() && suffix.size() > 1 &&
                 (tmp >= input.size() || std::isspace(input[tmp]) ||
-                 input[tmp] == ',' || input[tmp] == ':' ||
-                 input[tmp] == ';')) {
+                 input[tmp] == ',' || input[tmp] == ':' || input[tmp] == ';')) {
               identifier += suffix;
               position = tmp;
               column = saved_col + suffix.size();

@@ -1,16 +1,11 @@
-#include <algorithm>
-#include <iostream>
-#include <sam32/assembler/compiler.hpp>
+#include <array>
+#include <cstdint>
 #include <stdexcept>
+#include <utility>
 #include <vector>
 
-std::array<uint8_t, 4> to_bytes(uint32_t word, uint8_t size = 4) {
-  std::array<uint8_t, 4> bytes = {0, 0, 0, 0};
-  for (uint8_t i = 0; i < size; ++i) {
-    bytes[i] = (word >> (8 * i)) & 0xFF;
-  }
-  return bytes;
-}
+#include <sam32/assembler/compiler.hpp>
+#include <sam32/utils/utils.hpp>
 
 namespace sam32 {
 uint32_t encode_instruction(const ParsedInstruction& instr) {
@@ -91,19 +86,19 @@ uint32_t encode_instruction(const ParsedInstruction& instr) {
           machine_code |= (static_cast<uint32_t>(instr.shift_amt & 0x1F) << 1);
         }
       } else if (get_type(1) == OperandType::REGISTER &&
-                get_type(2) == OperandType::IMMEDIATE) {
+                 get_type(2) == OperandType::IMMEDIATE) {
         machine_code |= (1 << 24);
         machine_code |= (get_reg(1) << 13);
         machine_code |= (get_imm(2) & 0x1FFF);
       } else if (get_type(1) == OperandType::IMMEDIATE &&
-                get_type(2) == OperandType::REGISTER) {
+                 get_type(2) == OperandType::REGISTER) {
         machine_code |= (1 << 23);
         machine_code |= ((get_imm(1) & 0x1FFF) << 5);
         machine_code |= (get_reg(2));
       }
     } else if (instr.operands.size() == 2) {
       machine_code |= (get_reg(0) << 18);
-      
+
       if (get_type(1) == OperandType::REGISTER) {
         is_r_type = true;
         machine_code |= (get_reg(1) << 13);
@@ -125,30 +120,71 @@ uint32_t encode_instruction(const ParsedInstruction& instr) {
   return machine_code;
 }
 
-std::vector<uint8_t> encode(const Segment& text_segment,
-                            const Segment& data_segment) {
+void add_data(std::vector<uint8_t>& output, const Data& data) {
+  // insert data bytes into output vector, ensuring proper alignment at the address specified by data.addr_offset
+
+  if (output.size() < data.addr_offset) {
+    output.resize(data.addr_offset, 0);  // pad with zeros if needed
+  }
+
+  std::array<uint8_t, 4> bytes = to_bytes(data.value.value, data.size);
+
+  switch (data.size) {
+    case 1:
+      output.push_back(bytes[0]);
+      break;
+    case 2:
+      output.push_back(bytes[0]);
+      output.push_back(bytes[1]);
+      break;
+    case 4:
+      output.push_back(bytes[0]);
+      output.push_back(bytes[1]);
+      output.push_back(bytes[2]);
+      output.push_back(bytes[3]);
+      break;
+    default:
+      throw std::runtime_error("Invalid data size at line " +
+                               std::to_string(data.line_number));
+  }
+}
+
+std::pair<std::vector<uint8_t>, std::vector<LstRow>> encode(
+    const Segment& text_segment, const Segment& data_segment) {
   std::vector<uint8_t> output;
+  std::vector<LstRow> lst_rows;
 
   for (const auto& var : text_segment.instructions) {
     if (std::holds_alternative<ParsedInstruction>(var)) {
       const auto& instr = std::get<ParsedInstruction>(var);
       uint32_t mc = encode_instruction(instr);
-      auto bytes = to_bytes(mc);
-      output.insert(output.end(), bytes.begin(), bytes.end());
+      add_data(output, Data(mc, 4, instr.line_number,
+                            instr.addr_offset + text_segment.addr_base));
+      lst_rows.emplace_back(instr.addr_offset + text_segment.addr_base, mc,
+                            instr);
     } else {
       const auto& data = std::get<Data>(var);
-      auto bytes = to_bytes(data.value.value, data.size);
-      output.insert(output.end(), bytes.begin(), bytes.begin() + data.size);
+      add_data(output, data);
+      lst_rows.emplace_back(data.addr_offset + data_segment.addr_base,
+                            data.value.value, ParsedInstruction(M_NOP, {}));
     }
   }
 
   for (const auto& var : data_segment.instructions) {
-    if (std::holds_alternative<Data>(var)) {
+    if (std::holds_alternative<ParsedInstruction>(var)) {
+      const auto& instr = std::get<ParsedInstruction>(var);
+      uint32_t mc = encode_instruction(instr);
+      add_data(output, Data(mc, 4, instr.line_number,
+                            instr.addr_offset + text_segment.addr_base));
+      lst_rows.emplace_back(instr.addr_offset + text_segment.addr_base, mc,
+                            instr);
+    } else {
       const auto& data = std::get<Data>(var);
-      auto bytes = to_bytes(data.value.value, data.size);
-      output.insert(output.end(), bytes.begin(), bytes.begin() + data.size);
+      add_data(output, data);
+      lst_rows.emplace_back(data.addr_offset + data_segment.addr_base,
+                            data.value.value, ParsedInstruction(M_NOP, {}));
     }
   }
-  return output;
+  return std::make_pair(output, lst_rows);
 }
 }  // namespace sam32

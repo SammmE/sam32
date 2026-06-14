@@ -3,6 +3,11 @@
   "version-string": "0.1.0",
   "dependencies": [
     "cli11",
-    "fmt"
+    "fmt",
+    {
+      "name": "imgui",
+      "features": ["sdl3-binding", "sdl3-renderer-binding"]
+    },
+    "sdl3"
   ]
 }
