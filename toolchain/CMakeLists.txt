@@ -51,10 +51,8 @@ else()
     SDL3::SDL3
   )
 
-  # Setup external project for Web build so they build together
   include(ExternalProject)
 
-  # Only add the web project if the EMSDK environment variable is available or we find it
   set(EMSDK_PATH "$ENV{EMSDK}")
   if(NOT EMSDK_PATH AND EXISTS "/usr/lib/emscripten")
     set(EMSDK_PATH "/usr/lib/emscripten")
