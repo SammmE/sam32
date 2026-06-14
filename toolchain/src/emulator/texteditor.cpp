@@ -775,13 +775,23 @@ void TextEditor::HandleMouseInputs() {
 			Left mouse button click
 			*/
       else if (click) {
-        mState.mCursorPosition = mInteractiveStart = mInteractiveEnd =
-            ScreenPosToCoordinates(ImGui::GetMousePos());
-        if (ctrl)
-          mSelectionMode = SelectionMode::Word;
-        else
-          mSelectionMode = SelectionMode::Normal;
-        SetSelection(mInteractiveStart, mInteractiveEnd, mSelectionMode);
+        ImVec2 mousePos = ImGui::GetMousePos();
+        ImVec2 windowPos = ImGui::GetWindowPos();
+        float scrollX = ImGui::GetScrollX();
+        float local_x = mousePos.x - windowPos.x + scrollX;
+
+        if (local_x < mTextStart) {
+          int lineNo = ScreenPosToCoordinates(mousePos).mLine + 1;
+          ToggleBreakpoint(lineNo);
+        } else {
+          mState.mCursorPosition = mInteractiveStart = mInteractiveEnd =
+              ScreenPosToCoordinates(mousePos);
+          if (ctrl)
+            mSelectionMode = SelectionMode::Word;
+          else
+            mSelectionMode = SelectionMode::Normal;
+          SetSelection(mInteractiveStart, mInteractiveEnd, mSelectionMode);
+        }
 
         mLastClick = (float)ImGui::GetTime();
       }

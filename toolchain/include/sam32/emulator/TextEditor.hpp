@@ -190,6 +190,13 @@ class TextEditor {
   }
 
   void SetBreakpoints(const Breakpoints& aMarkers) { mBreakpoints = aMarkers; }
+  const Breakpoints& GetBreakpoints() const { return mBreakpoints; }
+  void ToggleBreakpoint(int aLine) {
+    if (mBreakpoints.count(aLine) > 0)
+      mBreakpoints.erase(aLine);
+    else
+      mBreakpoints.insert(aLine);
+  }
 
   void Render(const char* aTitle, const ImVec2& aSize = ImVec2(),
               bool aBorder = false);

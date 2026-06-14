@@ -557,7 +557,8 @@ inline const std::vector<InstructionSignature> SIGNATURES = {
     // pseudo-instructions
     InstructionSignature{M_NOP, {{}}, false, false, false},
     InstructionSignature{M_MOV,
-                         {{OperandType::REGISTER, OperandType::REGISTER}},
+                         {{OperandType::REGISTER, OperandType::REGISTER},
+                          {OperandType::REGISTER, OperandType::IMMEDIATE}},
                          false,
                          false,
                          false},

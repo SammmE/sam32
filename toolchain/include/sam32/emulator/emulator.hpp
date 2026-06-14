@@ -34,6 +34,20 @@ struct Instruction_t {
   Instruction_t(uint32_t instruction);
 };
 
+struct InstructionExecutionDetails {
+  uint32_t raw_instruction = 0;
+  uint32_t pc = 0;
+  uint32_t operand1 = 0;
+  uint32_t operand2 = 0;
+  uint32_t alu_output = 0;
+  bool writes_to_register = false;
+  uint8_t written_register = 0;
+  bool writes_to_memory = false;
+  uint32_t memory_address_written = 0;
+  uint32_t memory_value_written = 0;
+  bool executed = false;
+};
+
 struct EmulatorState {
   uint32_t registers[32];  // r0-r31
   uint32_t pc;             // program counter
@@ -43,8 +57,15 @@ struct EmulatorState {
   bool overflow_flag;
 
   std::vector<uint8_t> memory;
+  InstructionExecutionDetails last_execution;
+  std::vector<uint32_t> call_stack;
+  std::unordered_map<uint32_t, uint32_t> heatmap;
 
-  EmulatorState(size_t memory_size) : memory(memory_size, 0) {}
+  EmulatorState(size_t memory_size) : memory(memory_size, 0) {
+    for (int i = 0; i < 32; ++i) registers[i] = 0;
+    pc = 0;
+    zero_flag = negative_flag = carry_flag = overflow_flag = false;
+  }
 
   // registers
   uint32_t get_reg(size_t index);
@@ -65,6 +86,7 @@ struct Emulator {
   EmulatorState state;
   std::vector<EmulatorState> history;
   std::unordered_map<size_t, std::function<void()>> breakpoints;
+  std::unordered_map<size_t, std::function<void()>> watchpoints;
   size_t cycle_count = 0;
 
   Emulator(size_t memory_size = 1024 * 1024);  // Default to 1MB of memory

@@ -580,10 +580,17 @@ void Parser::flush_instruction(ParsedInstruction& instr) {
       break;
 
     case M_MOV:
-      expanded_instrs.push_back(ParsedInstruction(
-          M_ADD,
-          {instr.operands.at(0), instr.operands.at(1), Operand::Immediate(0)},
-          false, false, SHIFT_LSL, 0));
+      if (instr.operands.at(1).type == OperandType::REGISTER) {
+        expanded_instrs.push_back(ParsedInstruction(
+            M_ADD,
+            {instr.operands.at(0), instr.operands.at(1), Operand::Immediate(0)},
+            false, false, SHIFT_LSL, 0));
+      } else {
+        expanded_instrs.push_back(ParsedInstruction(
+            M_ADD,
+            {instr.operands.at(0), Operand::Register(0), instr.operands.at(1)},
+            false, false, SHIFT_LSL, 0));
+      }
       is_pseudo = true;
       break;
 

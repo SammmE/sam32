@@ -48,14 +48,20 @@ void Emulator::load_program(const std::vector<uint8_t>& program,
 }
 
 void Emulator::tick() {
-  if (breakpoints.count(
-          state
-              .pc)) {  // get the instruction before so this one doesn't execute yet
+  if (breakpoints.count(state.pc)) {
     breakpoints[state.pc]();
   }
 
   uint32_t instruction = state.read_word(state.pc);
+  state.heatmap[state.pc]++;
   execute_instruction(instruction);
+
+  if (state.last_execution.writes_to_memory) {
+    if (watchpoints.count(state.last_execution.memory_address_written)) {
+      watchpoints[state.last_execution.memory_address_written]();
+    }
+  }
+
   history.push_back(state);
   cycle_count++;
 }
@@ -82,6 +88,12 @@ void Emulator::execute_instruction(uint32_t instruction) {
   uint32_t operand1;
   uint32_t operand2;
 
+  state.last_execution.raw_instruction = instruction;
+  state.last_execution.pc = state.pc;
+  state.last_execution.writes_to_register = false;
+  state.last_execution.writes_to_memory = false;
+  state.last_execution.executed = true;
+
   if (decoded.is_rs1_imm) {
     operand1 = static_cast<uint32_t>(static_cast<int32_t>(decoded.imm));
     operand2 = state.get_reg(decoded.rs2);
@@ -100,6 +112,8 @@ void Emulator::execute_instruction(uint32_t instruction) {
       if (!(decoded.is_rs1_imm || decoded.is_rs2_imm)) {
         operand2 = apply_barrel_shift(operand2, decoded.shift_type, decoded.shift_amount);
       }
+      state.last_execution.operand1 = operand1;
+      state.last_execution.operand2 = operand2;
 
       switch (operation) {
         case 0:  // ADD
@@ -167,6 +181,10 @@ void Emulator::execute_instruction(uint32_t instruction) {
         }
       }
 
+      state.last_execution.alu_output = output_bus;
+      state.last_execution.writes_to_register = true;
+      state.last_execution.written_register = decoded.rd;
+
       state.set_reg(decoded.rd, output_bus);
     } break;
     case 1:  // Control flow
@@ -215,8 +233,16 @@ void Emulator::execute_instruction(uint32_t instruction) {
 
       if (should_jump) {
         if (is_r_branch) {
+          if (decoded.rs1 == 30 && !state.call_stack.empty()) {
+            state.call_stack.pop_back(); // RET instruction
+          }
           state.pc = state.get_reg(decoded.rs1);
         } else {
+          if (decoded.rd == 30) {
+            state.call_stack.push_back(state.pc + 4); // CALL instruction
+          }
+          state.last_execution.writes_to_register = true;
+          state.last_execution.written_register = decoded.rd;
           state.set_reg(decoded.rd, state.pc + 4);
           state.pc += decoded.branch_offset * 4;
         }
@@ -229,9 +255,14 @@ void Emulator::execute_instruction(uint32_t instruction) {
       switch (operation) {
         case 16: // LW
           output_bus = state.read_word(addr);
+          state.last_execution.writes_to_register = true;
+          state.last_execution.written_register = decoded.rd;
           state.set_reg(decoded.rd, output_bus);
           break;
         case 0: // SW
+          state.last_execution.writes_to_memory = true;
+          state.last_execution.memory_address_written = addr;
+          state.last_execution.memory_value_written = state.get_reg(decoded.rd);
           state.write_word(addr, state.get_reg(decoded.rd));
           break;
         default:

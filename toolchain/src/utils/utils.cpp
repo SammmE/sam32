@@ -117,8 +117,10 @@ std::vector<Token> LexString(const std::string& line, int line_number) {
   sam32::Lexer lexer(line);
   lexer.tokenize();
 
-  for (Token& token : lexer.tokens) {
-    token.line = line_number;
+  if (line_number != 0) {
+    for (Token& token : lexer.tokens) {
+      token.line = line_number;
+    }
   }
   return lexer.tokens;
 }

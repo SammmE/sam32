@@ -155,13 +155,10 @@ int main(int argc, char** argv) {
     std::vector<sam32::Token> tokens =
         sam32::LexString(sam32::read_file(file_path));
 
-    sam32::Lexer lexer(file_path);
-    lexer.tokenize();
-
     if (verbose)
-      fmt::println("Lexed {} tokens", lexer.tokens.size());
+      fmt::println("Lexed {} tokens", tokens.size());
 
-    sam32::Parser parser(lexer.tokens);
+    sam32::Parser parser(tokens);
     parser.parse();
 
     if (verbose) {
