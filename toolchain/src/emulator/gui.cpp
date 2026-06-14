@@ -373,6 +373,8 @@ void EmulatorGui::render_editor() {
     te_initialized = true;
   }
 
+  ImGui::SetNextWindowPos(ImVec2(17, 54), ImGuiCond_FirstUseEver);
+  ImGui::SetNextWindowSize(ImVec2(388, 929), ImGuiCond_FirstUseEver);
   ImGui::Begin("SAM32 Code Editor");
 
   // File loading dialog
@@ -469,6 +471,8 @@ static std::string format_parsed(
 }
 
 void EmulatorGui::render_lst() {
+  ImGui::SetNextWindowPos(ImVec2(445, 81), ImGuiCond_FirstUseEver);
+  ImGui::SetNextWindowSize(ImVec2(634, 484), ImGuiCond_FirstUseEver);
   ImGui::Begin("Instruction List (LST)");
   ImGui::Text("Cycle Count: %zu", emulator.cycle_count);
   if (ImGui::BeginTable("LST Table", 5,
@@ -528,6 +532,8 @@ void EmulatorGui::render_lst() {
 }
 
 void EmulatorGui::render_registers() {
+  ImGui::SetNextWindowPos(ImVec2(1459, 6), ImGuiCond_FirstUseEver);
+  ImGui::SetNextWindowSize(ImVec2(457, 288), ImGuiCond_FirstUseEver);
   ImGui::Begin("Registers");
 
   if (emulator.state.last_execution.executed &&
@@ -605,6 +611,8 @@ void EmulatorGui::render_registers() {
 }
 
 void EmulatorGui::render_flags() {
+  ImGui::SetNextWindowPos(ImVec2(1109, 298), ImGuiCond_FirstUseEver);
+  ImGui::SetNextWindowSize(ImVec2(162, 134), ImGuiCond_FirstUseEver);
   ImGui::Begin("Status Flags");
 
   bool is_frozen = false;
@@ -632,6 +640,8 @@ void EmulatorGui::render_flags() {
 }
 
 void EmulatorGui::render_instruction_details() {
+  ImGui::SetNextWindowPos(ImVec2(1099, 9), ImGuiCond_FirstUseEver);
+  ImGui::SetNextWindowSize(ImVec2(357, 271), ImGuiCond_FirstUseEver);
   ImGui::Begin("Instruction Details");
   if (emulator.state.last_execution.executed) {
     ImGui::Text("Raw Instruction: 0x%08X",
@@ -657,6 +667,8 @@ void EmulatorGui::render_instruction_details() {
 }
 
 void EmulatorGui::render_watchlist() {
+  ImGui::SetNextWindowPos(ImVec2(1331, 634), ImGuiCond_FirstUseEver);
+  ImGui::SetNextWindowSize(ImVec2(577, 361), ImGuiCond_FirstUseEver);
   ImGui::Begin("Watchlist");
 
   static char input_buf[32] = "";
@@ -719,6 +731,8 @@ void EmulatorGui::render_watchlist() {
 }
 
 void EmulatorGui::render_hex_dump() {
+  ImGui::SetNextWindowPos(ImVec2(417, 596), ImGuiCond_FirstUseEver);
+  ImGui::SetNextWindowSize(ImVec2(873, 379), ImGuiCond_FirstUseEver);
   ImGui::Begin("Hex Dump");
   const int bytes_per_line = 16;
   size_t total_lines =
@@ -763,6 +777,8 @@ void EmulatorGui::render_hex_dump() {
 }
 
 void EmulatorGui::render_stack_visualizer() {
+  ImGui::SetNextWindowPos(ImVec2(1293, 298), ImGuiCond_FirstUseEver);
+  ImGui::SetNextWindowSize(ImVec2(299, 335), ImGuiCond_FirstUseEver);
   ImGui::Begin("Stack Visualizer");
   uint32_t sp = emulator.state.get_reg(31);
   ImGui::Text("Stack Pointer (R31): 0x%08X", sp);
@@ -795,6 +811,8 @@ void EmulatorGui::render_stack_visualizer() {
 }
 
 void EmulatorGui::render_call_stack() {
+  ImGui::SetNextWindowPos(ImVec2(1586, 303), ImGuiCond_FirstUseEver);
+  ImGui::SetNextWindowSize(ImVec2(321, 264), ImGuiCond_FirstUseEver);
   ImGui::Begin("Call Stack");
   if (ImGui::BeginTable("CallStackTable", 2, ImGuiTableFlags_Borders)) {
     ImGui::TableSetupColumn("Depth");
