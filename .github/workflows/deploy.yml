@@ -28,16 +28,21 @@ jobs:
       - name: Setup Emscripten
         uses: mymindstorm/setup-emsdk@v14
 
-      - name: Configure CMake
-        run: emcmake cmake -S . -B build
+      - name: Configure CMake (vcpkg + Emscripten)
+        run: >
+          cmake -S . -B build/web
+          -DCMAKE_TOOLCHAIN_FILE="$VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake"
+          -DVCPKG_CHAINLOAD_TOOLCHAIN_FILE="$EMSDK/upstream/emscripten/cmake/Modules/Platform/Emscripten.cmake"
+          -DVCPKG_TARGET_TRIPLET=wasm32-emscripten
+          -DWEB_BUILD=ON
 
       - name: Build application
-        run: cmake --build build
+        run: cmake --build build/web
 
       - name: Upload GitHub Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: ./toolchain/build/web 
+          path: ./toolchain/build/web
 
   deploy:
     needs: build

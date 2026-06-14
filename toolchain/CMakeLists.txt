@@ -82,4 +82,3 @@ endif()
 add_executable(test_editor /home/sam/.gemini/antigravity/brain/ebea5e05-baf8-4caf-aaea-db07121a90f8/scratch/test_editor.cpp src/emulator/texteditor.cpp)
 target_include_directories(test_editor PUBLIC include)
 target_link_libraries(test_editor PRIVATE imgui::imgui SDL3::SDL3)
-
