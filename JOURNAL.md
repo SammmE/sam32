@@ -1,6 +1,6 @@
 # SAM32 Design Journal
 
-### Total Design Hours: ~31h 32m
+### Total Design Hours: ~34 hours
 
 **[Approximate Date, June 2, 2026]**
 * **Task:** Designed the core SAM32 instruction set architecture (ISA).
@@ -44,5 +44,5 @@
 **[June 15, 2026]**
 * **Task:** Finish SystemVerilog for the ALU, PC and Register File
 * **Thoughts**: I didn't have too much time to work on the actual project today, I had to work until 3, and had to go out with a couple friends today (daily pickleball session) after, so I didn't have too long. When I had some free time, I looked up all of the stuff I need to know. Firstly, I found out that I need to set up a 'DMAC' for reading from an SD card. This is kind of like a mini, super-dumb unit that just reads from the storage and writes that data to the memory, and vice versa (the CPU is wayy too fast and would waste a bunch of CPU cycles just updating stuff, so you instead dedicate this unit to do it instead, so that the CPU can instead focus on important stuff. Then, you tug an interrupt wire and then the CPU goes back to do whatever it needed to do with the storage). I've never been good with async concepts, so this will be a bit of a challenge for me. Besides doing this, I had an hour/hour+30min to work on the actual SystemVerilog, so I wrote the ALU, PC, and the RegisterFile. It took a lot less time that needed, mostly because I could reuse code from previous projects or just because I did the easy stuff first. All of the testbenches passed, and so I ate a brookie.
-* **Additional Notes**: I DID use AI to generate edge cases that I may have missed. For example, I didn't think to make sure the PC loads with a zero (I can't think of a scenario where it wouldn't TBH). The 2 hours I logged for this is also not 100% spent on writing the actual code. a good 30-45 min was spent in my free time while working just reading old documentation or prompting to see exactly how I would do stuff (e.g., I found out about the DMAC, even though I used it a bunch without realizing it). 
+* **Additional Notes**: I DID use AI to generate edge cases that I may have missed. For example, I didn't think to make sure the PC loads with a zero (I can't think of a scenario where it wouldn't TBH). The 2 hours I logged for this is also not 100% spent on writing the actual code. a good 30-45 min was spent in my free time while working just reading old documentation or prompting to see exactly how I would do stuff (e.g., I found out about the DMAC, even though I used it a bunch without realizing it).
 * **Time spent:** 2 hours
