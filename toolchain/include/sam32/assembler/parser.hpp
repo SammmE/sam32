@@ -246,8 +246,9 @@ struct Parser {
   ///   { pointer-to-segment-base (nullptr = absolute constant),
   ///     byte offset from that base }
   std::unordered_map<std::string, std::pair<size_t*, size_t>> symbol_table;
+  bool allow_placeholders;
 
-  Parser(const std::vector<Token>& tokens);
+  Parser(const std::vector<Token>& tokens, bool allow_placeholders = false);
 
   /// First pass: tokenize all statements, build segment instruction lists,
   /// and populate symbol_table with label definitions seen so far.

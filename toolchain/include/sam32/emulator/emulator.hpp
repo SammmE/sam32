@@ -16,20 +16,20 @@ struct Instruction_t {
   uint32_t raw;  // The raw 32-bit instruction
 
   // Decoded fields
-  uint8_t category;      // 2 bits [31:30]
-  uint8_t operation;     // 5 bits [29:25]
-  bool is_rs2_imm;       // 1 bit  [24]
-  bool is_rs1_imm;       // 1 bit  [23]
-  uint8_t rd;            // 5 bits [22:18]
-  uint8_t rs1;           // 5 bits [17:13]
-  uint8_t rs2;           // 5 bits [12:8] or [4:0]
+  uint8_t category;      // 2 bits [1:0]
+  uint8_t operation;     // 5 bits [6:2]
+  bool is_rs1_imm;       // 1 bit  [7]
+  bool is_rs2_imm;       // 1 bit  [8]
+  uint8_t rd;            // 5 bits [13:9]
+  uint8_t rs1;           // 5 bits [18:14] or [13:9] in R-Branch
+  uint8_t rs2;           // 5 bits [23:19] or [31:27]
   
   uint16_t imm;          // 13 bits (I-Type)
   uint32_t branch_offset;// 18 bits (J-Type)
   
-  uint8_t shift_type;    // 2 bits [7:6]
-  uint8_t shift_amount;  // 5 bits [5:1]
-  bool F;                // 1 bit  [0] (Freeze status)
+  uint8_t shift_type;    // 2 bits [25:24]
+  uint8_t shift_amount;  // 5 bits [30:26]
+  bool F;                // 1 bit  [31] (Freeze status)
 
   Instruction_t(uint32_t instruction);
 };
@@ -88,8 +88,9 @@ struct Emulator {
   std::unordered_map<size_t, std::function<void()>> breakpoints;
   std::unordered_map<size_t, std::function<void()>> watchpoints;
   size_t cycle_count = 0;
+  bool allow_placeholders;
 
-  Emulator(size_t memory_size = 1024 * 1024);  // Default to 1MB of memory
+  Emulator(size_t memory_size = 1024 * 1024, bool allow_placeholders = false);  // Default to 1MB of memory
 
   void load_program(const std::vector<uint8_t>& program,
                     size_t start_address = 0);

@@ -22,9 +22,9 @@ uint32_t sign_extend(uint32_t value, size_t bits);
 uint32_t apply_barrel_shift(uint32_t value, uint8_t shift_type, uint8_t shift_amount);
 
 std::vector<Token> LexString(const std::string& line, int line_number = 0);
-std::pair<Segment, Segment> ParseTokens(const std::vector<Token>& tokens);
+std::pair<Segment, Segment> ParseTokens(const std::vector<Token>& tokens, bool allow_placeholders = false);
 std::pair<std::vector<uint8_t>, std::vector<LstRow>> ParseAssembly(
     std::pair<Segment, Segment> segments);
 std::pair<std::vector<uint8_t>, std::vector<LstRow>> Assemble(
-    const std::string& code);
+    const std::string& code, bool allow_placeholders = false);
 }  // namespace sam32
