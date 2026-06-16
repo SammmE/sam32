@@ -78,7 +78,7 @@ int main(int argc, char** argv) {
   ImGui_ImplSDL3_InitForSDLRenderer(window, renderer);
   ImGui_ImplSDLRenderer3_Init(renderer);
 
-  sam32::Emulator emu;
+  sam32::Emulator emu(1024 * 1024, true);
   sam32::gui::EmulatorGui gui(emu);
 
   AppState state;
