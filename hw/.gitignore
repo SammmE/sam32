@@ -1,3 +1,23 @@
+*.cache/
+*.hw/
+*.ip_user_files/
+*.sim/
+*.runs/
+.Xil/
+
+xsim.dir/
+
+xvlog.pb
+xvlog.log
+xelab.pb
+xelab.log
+xsim.jou
+xsim.log
+
+webtalk*.log
+webtalk*.jou
+webtalk*.dir/
+
 # Created by https://www.toptal.com/developers/gitignore/api/vivado
 # Edit at https://www.toptal.com/developers/gitignore?templates=vivado
 
@@ -56,11 +76,11 @@
 #TCL - files
 !*.tcl
 #Journal - files
-!*.jou
+# !*.jou
 #Reports
 !*.rpt
-!*.txt
-!*.vdi
+# !*.txt
+# !*.vdi
 #C-files
 !*.c
 !*.h
