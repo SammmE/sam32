@@ -402,7 +402,7 @@ void EmulatorGui::render_editor() {
   if (ImGui::Button("Compile & Load")) {
     std::string code = editor.GetText();
     try {
-      auto compiled = Assemble(editor.GetText());
+      auto compiled = Assemble(editor.GetText(), emulator.allow_placeholders);
       machine_code = compiled.first;
       lst = compiled.second;
 

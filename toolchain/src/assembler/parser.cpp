@@ -8,7 +8,7 @@
 
 namespace sam32 {
 
-Parser::Parser(const std::vector<Token>& tokens) : tokens(tokens), pos(0) {
+Parser::Parser(const std::vector<Token>& tokens, bool allow_placeholders) : tokens(tokens), pos(0), allow_placeholders(allow_placeholders) {
   text_segment = Segment{{}, 0x00000000, 0};
   data_segment = Segment{{}, 0x00000000, 0};
   current_segment = &text_segment;
@@ -646,18 +646,18 @@ void Parser::flush_instruction(ParsedInstruction& instr) {
         return Operand::Immediate(val);
       };
 
-      if (c2 != 0) {
-        expanded_instrs.push_back(ParsedInstruction(M_OR, {rd, Operand::Register(0), make_op(c2, 3)}, false, false, SHIFT_LSL, 0));
-        expanded_instrs.push_back(ParsedInstruction(M_OR, {rd, Operand::Register(0), rd}, false, true, SHIFT_LSL, 12));
-        expanded_instrs.push_back(ParsedInstruction(M_OR, {rd, rd, make_op(c1, 2)}, false, false, SHIFT_LSL, 0));
-        expanded_instrs.push_back(ParsedInstruction(M_OR, {rd, Operand::Register(0), rd}, false, true, SHIFT_LSL, 12));
-        expanded_instrs.push_back(ParsedInstruction(M_OR, {rd, rd, make_op(c0, 1)}, false, false, SHIFT_LSL, 0));
+      if (c2 != 0 || is_label) {
+        expanded_instrs.push_back(ParsedInstruction(M_ADD, {rd, Operand::Register(0), make_op(c2, 3)}, false, false, SHIFT_LSL, 0));
+        expanded_instrs.push_back(ParsedInstruction(M_ADD, {rd, Operand::Register(0), rd}, false, true, SHIFT_LSL, 12));
+        expanded_instrs.push_back(ParsedInstruction(M_ADD, {rd, rd, make_op(c1, 2)}, false, false, SHIFT_LSL, 0));
+        expanded_instrs.push_back(ParsedInstruction(M_ADD, {rd, Operand::Register(0), rd}, false, true, SHIFT_LSL, 12));
+        expanded_instrs.push_back(ParsedInstruction(M_ADD, {rd, rd, make_op(c0, 1)}, false, false, SHIFT_LSL, 0));
       } else if (c1 != 0) {
-        expanded_instrs.push_back(ParsedInstruction(M_OR, {rd, Operand::Register(0), make_op(c1, 2)}, false, false, SHIFT_LSL, 0));
-        expanded_instrs.push_back(ParsedInstruction(M_OR, {rd, Operand::Register(0), rd}, false, true, SHIFT_LSL, 12));
-        expanded_instrs.push_back(ParsedInstruction(M_OR, {rd, rd, make_op(c0, 1)}, false, false, SHIFT_LSL, 0));
+        expanded_instrs.push_back(ParsedInstruction(M_ADD, {rd, Operand::Register(0), make_op(c1, 2)}, false, false, SHIFT_LSL, 0));
+        expanded_instrs.push_back(ParsedInstruction(M_ADD, {rd, Operand::Register(0), rd}, false, true, SHIFT_LSL, 12));
+        expanded_instrs.push_back(ParsedInstruction(M_ADD, {rd, rd, make_op(c0, 1)}, false, false, SHIFT_LSL, 0));
       } else {
-        expanded_instrs.push_back(ParsedInstruction(M_OR, {rd, Operand::Register(0), make_op(c0, 1)}, false, false, SHIFT_LSL, 0));
+        expanded_instrs.push_back(ParsedInstruction(M_ADD, {rd, Operand::Register(0), make_op(c0, 1)}, false, false, SHIFT_LSL, 0));
       }
       is_pseudo = true;
       break;
@@ -887,6 +887,15 @@ void Parser::verify_instruction(ParsedInstruction& instr) {
     throw std::runtime_error(
         "Internal error: no signature for instruction " +
         mnemonic_names[static_cast<size_t>(instr.mnemonic)]);
+  }
+
+  if (!allow_placeholders) {
+    if (instr.mnemonic == M_DIV || instr.mnemonic == M_DIVU || 
+        instr.mnemonic == M_REM || instr.mnemonic == M_REMU) {
+      throw std::runtime_error(
+          "Instruction '" + mnemonic_names[static_cast<size_t>(instr.mnemonic)] + 
+          "' is a placeholder and not implemented in the CPU. Enable --allow-placeholders to compile it.");
+    }
   }
 
   if (instr.freeze_flag &&

@@ -125,8 +125,8 @@ std::vector<Token> LexString(const std::string& line, int line_number) {
   return lexer.tokens;
 }
 
-std::pair<Segment, Segment> ParseTokens(const std::vector<Token>& tokens) {
-  sam32::Parser parser(tokens);
+std::pair<Segment, Segment> ParseTokens(const std::vector<Token>& tokens, bool allow_placeholders) {
+  sam32::Parser parser(tokens, allow_placeholders);
   parser.parse();
   return {parser.text_segment, parser.data_segment};
 }
@@ -137,7 +137,7 @@ std::pair<std::vector<uint8_t>, std::vector<LstRow>> ParseAssembly(
 }
 
 std::pair<std::vector<uint8_t>, std::vector<LstRow>> Assemble(
-    const std::string& code) {
-  return ParseAssembly(ParseTokens(LexString(code)));
+    const std::string& code, bool allow_placeholders) {
+  return ParseAssembly(ParseTokens(LexString(code), allow_placeholders));
 }
 }  // namespace sam32

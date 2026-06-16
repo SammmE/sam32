@@ -56,64 +56,65 @@ uint32_t encode_instruction(const ParsedInstruction& instr) {
 
   // Category 01: Branches
   if (instr.mnemonic >= M_B && instr.mnemonic <= M_BPL) {
-    machine_code |= (get_reg(0) << 18);
-    machine_code |= (get_imm(1) & 0x3FFFF);
+    machine_code |= (1 << 8) | (1 << 7);
+    machine_code |= (get_reg(0) << 9);
+    machine_code |= ((get_imm(1) & 0x3FFFF) << 14);
 
   } else if (instr.mnemonic >= M_BR && instr.mnemonic <= M_BPLR) {
-    machine_code |= (get_reg(0) << 18);
+    machine_code |= (get_reg(0) << 9);
 
     // Category 10: Memory
   } else if (instr.mnemonic >= M_SB && instr.mnemonic <= M_LW) {
-    machine_code |= (1 << 24);  // Imm Rs2 Toggle
-    machine_code |= (get_reg(0) << 18);
-    machine_code |= (get_reg(1) << 13);
-    machine_code |= (get_imm(2) & 0x1FFF);
+    machine_code |= (1 << 8);  // Imm Rs2 Toggle
+    machine_code |= (get_reg(0) << 9);
+    machine_code |= (get_reg(1) << 14);
+    machine_code |= ((get_imm(2) & 0x1FFF) << 19);
 
     // Category 00: ALU
   } else {
     bool is_r_type = false;
 
     if (instr.operands.size() == 3) {
-      machine_code |= (get_reg(0) << 18);
+      machine_code |= (get_reg(0) << 9);
 
       if (get_type(1) == OperandType::REGISTER &&
           get_type(2) == OperandType::REGISTER) {
         is_r_type = true;
-        machine_code |= (get_reg(1) << 13);
-        machine_code |= (get_reg(2) << 8);
+        machine_code |= (get_reg(1) << 14);
+        machine_code |= (get_reg(2) << 19);
         if (instr.has_shift) {
-          machine_code |= (static_cast<uint32_t>(instr.shift_type) << 6);
-          machine_code |= (static_cast<uint32_t>(instr.shift_amt & 0x1F) << 1);
+          machine_code |= (static_cast<uint32_t>(instr.shift_type) << 24);
+          machine_code |= (static_cast<uint32_t>(instr.shift_amt & 0x1F) << 26);
         }
       } else if (get_type(1) == OperandType::REGISTER &&
                  get_type(2) == OperandType::IMMEDIATE) {
-        machine_code |= (1 << 24);
-        machine_code |= (get_reg(1) << 13);
-        machine_code |= (get_imm(2) & 0x1FFF);
+        machine_code |= (1 << 8);
+        machine_code |= (get_reg(1) << 14);
+        machine_code |= ((get_imm(2) & 0x1FFF) << 19);
       } else if (get_type(1) == OperandType::IMMEDIATE &&
                  get_type(2) == OperandType::REGISTER) {
-        machine_code |= (1 << 23);
-        machine_code |= ((get_imm(1) & 0x1FFF) << 5);
-        machine_code |= (get_reg(2));
+        machine_code |= (1 << 7);
+        machine_code |= ((get_imm(1) & 0x1FFF) << 14);
+        machine_code |= (get_reg(2) << 27);
       }
     } else if (instr.operands.size() == 2) {
-      machine_code |= (get_reg(0) << 18);
+      machine_code |= (get_reg(0) << 9);
 
       if (get_type(1) == OperandType::REGISTER) {
         is_r_type = true;
-        machine_code |= (get_reg(1) << 13);
+        machine_code |= (get_reg(1) << 14);
         if (instr.has_shift) {
-          machine_code |= (static_cast<uint32_t>(instr.shift_type) << 6);
-          machine_code |= (static_cast<uint32_t>(instr.shift_amt & 0x1F) << 1);
+          machine_code |= (static_cast<uint32_t>(instr.shift_type) << 24);
+          machine_code |= (static_cast<uint32_t>(instr.shift_amt & 0x1F) << 26);
         }
       } else if (get_type(1) == OperandType::IMMEDIATE) {
-        machine_code |= (1 << 24);
-        machine_code |= (get_imm(1) & 0x1FFF);
+        machine_code |= (1 << 8);
+        machine_code |= ((get_imm(1) & 0x1FFF) << 19);
       }
     }
 
     if (instr.freeze_flag) {
-      machine_code |= 1;
+      machine_code |= (1U << 31);
     }
   }
 

@@ -3,42 +3,60 @@
 
 namespace sam32 {
 Instruction_t::Instruction_t(uint32_t instruction) : raw(instruction) {
-  category = extract_bits(instruction, 30, 2);
-  operation = extract_bits(instruction, 25, 5);
-  is_rs2_imm = extract_bits(instruction, 24, 1);
-  is_rs1_imm = extract_bits(instruction, 23, 1);
+  category = extract_bits(instruction, 0, 2);
+  operation = extract_bits(instruction, 2, 5);
+  is_rs1_imm = extract_bits(instruction, 7, 1);
+  is_rs2_imm = extract_bits(instruction, 8, 1);
   
-  rd = extract_bits(instruction, 18, 5);
-  rs1 = extract_bits(instruction, 13, 5);
-  
-  if (is_rs1_imm) {
-    imm = sign_extend(extract_bits(instruction, 5, 13), 13);
-    rs2 = extract_bits(instruction, 0, 5);
-    shift_type = 0;
-    shift_amount = 0;
-    F = false;
-  } else if (is_rs2_imm) {
-    imm = sign_extend(extract_bits(instruction, 0, 13), 13);
-    rs2 = 0; // Not used
-    shift_type = 0;
-    shift_amount = 0;
-    F = false;
-  } else {
+  rd = extract_bits(instruction, 9, 5);
+
+  if (category == 1 && is_rs1_imm && is_rs2_imm) {
+    // J-Type PC-relative branch
+    branch_offset = sign_extend(extract_bits(instruction, 14, 18), 18);
+    rs1 = 0;
+    rs2 = 0;
     imm = 0;
-    rs2 = extract_bits(instruction, 8, 5);
-    shift_type = extract_bits(instruction, 6, 2);
-    shift_amount = extract_bits(instruction, 1, 5);
-    F = extract_bits(instruction, 0, 1);
-  }
-  
-  if (category == 1 && operation <= 10) { // J-Type PC-relative branch
-    branch_offset = sign_extend(extract_bits(instruction, 0, 18), 18);
+    shift_type = 0;
+    shift_amount = 0;
+    F = false;
+  } else if (category == 1 && extract_bits(operation, 4, 1) == 1 && !is_rs1_imm && !is_rs2_imm) {
+    // R-Branch (Register-Indirect)
+    rs1 = extract_bits(instruction, 9, 5); // Target is in Rd field bits [13:9]
+    rs2 = 0;
+    imm = 0;
+    branch_offset = 0;
+    shift_type = 0;
+    shift_amount = 0;
+    F = false;
   } else {
     branch_offset = 0;
+
+    if (is_rs1_imm) { // I-Type B
+      imm = sign_extend(extract_bits(instruction, 14, 13), 13);
+      rs1 = 0; // Not used
+      rs2 = extract_bits(instruction, 27, 5);
+      shift_type = 0;
+      shift_amount = 0;
+      F = false;
+    } else if (is_rs2_imm) { // I-Type A
+      imm = sign_extend(extract_bits(instruction, 19, 13), 13);
+      rs1 = extract_bits(instruction, 14, 5);
+      rs2 = 0; // Not used
+      shift_type = 0;
+      shift_amount = 0;
+      F = false;
+    } else { // R-Type
+      rs1 = extract_bits(instruction, 14, 5);
+      rs2 = extract_bits(instruction, 19, 5);
+      shift_type = extract_bits(instruction, 24, 2);
+      shift_amount = extract_bits(instruction, 26, 5);
+      F = extract_bits(instruction, 31, 1);
+      imm = 0;
+    }
   }
 }
 
-Emulator::Emulator(size_t memory_size) : state(memory_size) {}
+Emulator::Emulator(size_t memory_size, bool allow_placeholders) : state(memory_size), allow_placeholders(allow_placeholders) {}
 
 void Emulator::load_program(const std::vector<uint8_t>& program,
                             size_t start_address) {
@@ -109,11 +127,12 @@ void Emulator::execute_instruction(uint32_t instruction) {
   switch (category) {
     case 0:  // ALU operations
     {
-      if (!(decoded.is_rs1_imm || decoded.is_rs2_imm)) {
-        operand2 = apply_barrel_shift(operand2, decoded.shift_type, decoded.shift_amount);
-      }
       state.last_execution.operand1 = operand1;
       state.last_execution.operand2 = operand2;
+
+      if (!allow_placeholders && (operation == 3 || operation == 19 || operation == 4 || operation == 20)) {
+        throw std::invalid_argument("Placeholder instruction not implemented. Enable --allow-placeholders to execute.");
+      }
 
       switch (operation) {
         case 0:  // ADD
@@ -125,14 +144,31 @@ void Emulator::execute_instruction(uint32_t instruction) {
         case 2:  // MUL
           output_bus = static_cast<uint64_t>(operand1) * operand2 & 0xFFFFFFFF;
           break;
-        case 3:  // DIV (Unsigned)
+        case 18: // MULH
+          output_bus = (static_cast<uint64_t>(operand1) * operand2) >> 32;
+          break;
+        case 3:  // DIV
           if (operand2 != 0) {
-            output_bus = operand1 / operand2;
+            output_bus = static_cast<uint32_t>(static_cast<int32_t>(operand1) / static_cast<int32_t>(operand2));
           } else {
             output_bus = 0; // Or handle divide by zero
           }
           break;
-        case 4:  // MOD (Unsigned)
+        case 19: // DIVU
+          if (operand2 != 0) {
+            output_bus = operand1 / operand2;
+          } else {
+            output_bus = 0;
+          }
+          break;
+        case 4:  // REM
+          if (operand2 != 0) {
+            output_bus = static_cast<uint32_t>(static_cast<int32_t>(operand1) % static_cast<int32_t>(operand2));
+          } else {
+            output_bus = 0;
+          }
+          break;
+        case 20: // REMU
           if (operand2 != 0) {
             output_bus = operand1 % operand2;
           } else {
@@ -148,14 +184,19 @@ void Emulator::execute_instruction(uint32_t instruction) {
         case 7:  // XOR
           output_bus = operand1 ^ operand2;
           break;
-        case 10:  // NOT
+        case 8:  // NOT
           output_bus = ~operand1;
           break;
-        case 11:  // CLZ
+        case 9:  // CLZ
           output_bus = count_leading_zeros(operand1);
           break;
         default:
           throw std::invalid_argument("Invalid ALU operation");
+      }
+
+      uint32_t unshifted_output = output_bus;
+      if (!(decoded.is_rs1_imm || decoded.is_rs2_imm)) {
+        output_bus = apply_barrel_shift(output_bus, decoded.shift_type, decoded.shift_amount);
       }
 
       if (!decoded.F || decoded.is_rs1_imm || decoded.is_rs2_imm) {
@@ -167,14 +208,14 @@ void Emulator::execute_instruction(uint32_t instruction) {
             state.carry_flag = (operand1 >= operand2);
             int32_t s1 = static_cast<int32_t>(operand1);
             int32_t s2 = static_cast<int32_t>(operand2);
-            int32_t sr = static_cast<int32_t>(output_bus);
+            int32_t sr = static_cast<int32_t>(unshifted_output);
             state.overflow_flag = ((s1 >= 0 && s2 < 0 && sr < 0) ||
                                    (s1 < 0 && s2 >= 0 && sr >= 0));
           } else {  // ADD
             state.carry_flag = (operand1 > (0xFFFFFFFFu - operand2));
             int32_t s1 = static_cast<int32_t>(operand1);
             int32_t s2 = static_cast<int32_t>(operand2);
-            int32_t sr = static_cast<int32_t>(output_bus);
+            int32_t sr = static_cast<int32_t>(unshifted_output);
             state.overflow_flag = ((s1 >= 0 && s2 >= 0 && sr < 0) ||
                                    (s1 < 0 && s2 < 0 && sr >= 0));
           }
@@ -253,13 +294,49 @@ void Emulator::execute_instruction(uint32_t instruction) {
     {
       uint32_t addr = operand1 + operand2; // For memory, operand1/2 evaluates Rs1 + Imm correctly
       switch (operation) {
-        case 16: // LW
+        case 16: // LB
+          output_bus = static_cast<uint32_t>(static_cast<int32_t>(static_cast<int8_t>(state.read_byte(addr))));
+          state.last_execution.writes_to_register = true;
+          state.last_execution.written_register = decoded.rd;
+          state.set_reg(decoded.rd, output_bus);
+          break;
+        case 24: // LBU
+          output_bus = state.read_byte(addr);
+          state.last_execution.writes_to_register = true;
+          state.last_execution.written_register = decoded.rd;
+          state.set_reg(decoded.rd, output_bus);
+          break;
+        case 17: // LH
+          output_bus = static_cast<uint32_t>(static_cast<int32_t>(static_cast<int16_t>(state.read_halfword(addr))));
+          state.last_execution.writes_to_register = true;
+          state.last_execution.written_register = decoded.rd;
+          state.set_reg(decoded.rd, output_bus);
+          break;
+        case 25: // LHU
+          output_bus = state.read_halfword(addr);
+          state.last_execution.writes_to_register = true;
+          state.last_execution.written_register = decoded.rd;
+          state.set_reg(decoded.rd, output_bus);
+          break;
+        case 18: // LW
           output_bus = state.read_word(addr);
           state.last_execution.writes_to_register = true;
           state.last_execution.written_register = decoded.rd;
           state.set_reg(decoded.rd, output_bus);
           break;
-        case 0: // SW
+        case 0: // SB
+          state.last_execution.writes_to_memory = true;
+          state.last_execution.memory_address_written = addr;
+          state.last_execution.memory_value_written = state.get_reg(decoded.rd) & 0xFF;
+          state.write_byte(addr, state.get_reg(decoded.rd) & 0xFF);
+          break;
+        case 1: // SH
+          state.last_execution.writes_to_memory = true;
+          state.last_execution.memory_address_written = addr;
+          state.last_execution.memory_value_written = state.get_reg(decoded.rd) & 0xFFFF;
+          state.write_halfword(addr, state.get_reg(decoded.rd) & 0xFFFF);
+          break;
+        case 2: // SW
           state.last_execution.writes_to_memory = true;
           state.last_execution.memory_address_written = addr;
           state.last_execution.memory_value_written = state.get_reg(decoded.rd);

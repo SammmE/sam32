@@ -131,6 +131,7 @@ int main(int argc, char** argv) {
   std::string output_path;
   std::string bin_path;
   bool verbose = false;
+  bool allow_placeholders = false;
 
   compile
       ->add_option("file", file_path,
@@ -140,9 +141,13 @@ int main(int argc, char** argv) {
                       "Output file for the compiled machine code");
   compile->add_flag("-v,--verbose", verbose,
                     "Verbose output during compilation");
+  compile->add_flag("--allow-placeholders", allow_placeholders,
+                    "Enable compilation of placeholder instructions (div, divu, mod, modu)");
 
   emulator->add_option("-b,--bin", bin_path,
                        "Binary file to load into emulator");
+  emulator->add_flag("--allow-placeholders", allow_placeholders,
+                     "Enable emulation of placeholder instructions (div, divu, mod, modu)");
 
   app.require_subcommand(1);
 
@@ -158,7 +163,7 @@ int main(int argc, char** argv) {
     if (verbose)
       fmt::println("Lexed {} tokens", tokens.size());
 
-    sam32::Parser parser(tokens);
+    sam32::Parser parser(tokens, allow_placeholders);
     parser.parse();
 
     if (verbose) {
