@@ -133,3 +133,11 @@ Besides doing this, I had an hour/hour+30min to work on the actual SystemVerilog
 I DID use AI to generate edge cases that I may have missed. For example, I didn't think to make sure the PC loads with a zero (I can't think of a scenario where it wouldn't TBH). The 2 hours I logged for this is also not 100% spent on writing the actual code. a good 30-45 min was spent in my free time while working just reading old documentation or prompting to see exactly how I would do stuff (e.g., I found out about the DMAC, even though I used it a bunch without realizing it).
 
 time spent: 0 hours
+
+## Entry 9
+
+## 6/16/26 - SystemVerilog for the CU
+
+I didn't have very much time today either, as I had work. I finished the CU logic and testbench today (the testbench took forever!). All of the 'big bad' components are done, now all I have is a bunch of smaller, simpler components.
+
+time spent: 0 hours
