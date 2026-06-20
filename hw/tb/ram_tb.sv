@@ -84,6 +84,7 @@ module ram_tb();
     logic [31:0] data_out;
     logic        store;
     logic        load;
+    logic        load_unsigned;
     logic [1:0]  width;
     logic        ready;
     
@@ -125,6 +126,7 @@ module ram_tb();
         .data_out(data_out),
         .store(store),
         .load(load),
+        .load_unsigned(load_unsigned),
         .width(width),
         .ready(ready),
         .ddr2_addr(ddr2_addr),
@@ -175,9 +177,10 @@ module ram_tb();
         $display("Write passed for %s (Addr: %h, Data: %h, Width: %b)", desc_in, addr_in, data_in_val, w_in);
     endtask
 
-    task automatic read_mem(input logic [31:0] addr_in, input logic [1:0] w_in, input string desc_in);
+    task automatic read_mem(input logic [31:0] addr_in, input logic [1:0] w_in, input logic u_in, input string desc_in);
         address = addr_in;
         width = w_in;
+        load_unsigned = u_in;
         store = 0;
         load = 1;
         
@@ -189,10 +192,16 @@ module ram_tb();
             if (w_in == 2'b10) begin
                 exp_data = shadow_mem[addr_in];
             end else if (w_in == 2'b01) begin
-                exp_data = {16'b0, shadow_mem[addr_in][15:0]};
+                if (u_in) exp_data = {16'b0, shadow_mem[addr_in][15:0]};
+                else      exp_data = {{16{shadow_mem[addr_in][15]}}, shadow_mem[addr_in][15:0]};
             end else begin
-                if (addr_in[0] == 0) exp_data = {24'b0, shadow_mem[addr_in][7:0]};
-                else                 exp_data = {24'b0, shadow_mem[addr_in][15:8]};
+                if (addr_in[0] == 0) begin
+                    if (u_in) exp_data = {24'b0, shadow_mem[addr_in][7:0]};
+                    else      exp_data = {{24{shadow_mem[addr_in][7]}}, shadow_mem[addr_in][7:0]};
+                end else begin
+                    if (u_in) exp_data = {24'b0, shadow_mem[addr_in][15:8]};
+                    else      exp_data = {{24{shadow_mem[addr_in][15]}}, shadow_mem[addr_in][15:8]};
+                end
             end
         end
         
@@ -207,7 +216,7 @@ module ram_tb();
         $display("Starting RAM Testbench...");
         
         rst = 1;
-        address = 0; data_in = 0; store = 0; load = 0; width = 0;
+        address = 0; data_in = 0; store = 0; load = 0; load_unsigned = 0; width = 0;
         #100;
         rst = 0;
         
@@ -215,25 +224,33 @@ module ram_tb();
         
         // Word Write & Read
         write_mem(32'h0000_1000, 32'hDEAD_BEEF, 2'b10, "Word Write");
-        read_mem(32'h0000_1000, 2'b10, "Word Read");
+        read_mem(32'h0000_1000, 2'b10, 1'b0, "Word Read");
         
         // Halfword Write & Read
         write_mem(32'h0000_2000, 32'h1234_5678, 2'b01, "Halfword Write");
-        read_mem(32'h0000_2000, 2'b01, "Halfword Read");
+        read_mem(32'h0000_2000, 2'b01, 1'b0, "Halfword Read Signed");
+        read_mem(32'h0000_2000, 2'b01, 1'b1, "Halfword Read Unsigned");
+        
+        // Halfword Write & Read (Negative)
+        write_mem(32'h0000_2004, 32'h1234_F678, 2'b01, "Halfword Write Negative");
+        read_mem(32'h0000_2004, 2'b01, 1'b0, "Halfword Read Negative Signed");
+        read_mem(32'h0000_2004, 2'b01, 1'b1, "Halfword Read Negative Unsigned");
         
         // Byte Write & Read (Even Address)
         write_mem(32'h0000_3000, 32'h0000_00AB, 2'b00, "Byte Write (Even)");
-        read_mem(32'h0000_3000, 2'b00, "Byte Read (Even)");
+        read_mem(32'h0000_3000, 2'b00, 1'b0, "Byte Read Signed (Even)");
+        read_mem(32'h0000_3000, 2'b00, 1'b1, "Byte Read Unsigned (Even)");
         
         // Byte Write & Read (Odd Address)
         write_mem(32'h0000_3001, 32'h0000_00CD, 2'b00, "Byte Write (Odd)");
-        read_mem(32'h0000_3001, 2'b00, "Byte Read (Odd)");
+        read_mem(32'h0000_3001, 2'b00, 1'b0, "Byte Read Signed (Odd)");
+        read_mem(32'h0000_3001, 2'b00, 1'b1, "Byte Read Unsigned (Odd)");
         
         // Back to back Word operations
         write_mem(32'h0000_4000, 32'h1111_2222, 2'b10, "Word Write 1");
         write_mem(32'h0000_4004, 32'h3333_4444, 2'b10, "Word Write 2");
-        read_mem(32'h0000_4000, 2'b10, "Word Read 1");
-        read_mem(32'h0000_4004, 2'b10, "Word Read 2");
+        read_mem(32'h0000_4000, 2'b10, 1'b0, "Word Read 1");
+        read_mem(32'h0000_4004, 2'b10, 1'b0, "Word Read 2");
 
         $display("Starting 50 Randomized Tests...");
         
@@ -251,7 +268,7 @@ module ram_tb();
             write_mem(rand_addr, rand_data, rand_width, desc);
             
             desc = "Random Read";
-            read_mem(rand_addr, rand_width, desc);
+            read_mem(rand_addr, rand_width, $urandom_range(0, 1), desc);
         end
 
         $display("ALL TESTS PASSED SUCCESSFULLY!");

@@ -11,6 +11,7 @@ module ram (
     output logic [31:0] data_out,
     input  logic        store,
     input  logic        load,
+    input  logic        load_unsigned,
     input  logic [1:0]  width, // 00=byte, 01=half-word, 10=word
     output logic        ready,
     
@@ -204,10 +205,13 @@ module ram (
     always_comb begin
         data_out = read_data_reg;
         if (width == 2'b00) begin
-            if (address[0] == 1'b0) data_out = {24'b0, read_data_reg[7:0]};
-            else                    data_out = {24'b0, read_data_reg[15:8]};
+            if (address[0] == 1'b0) begin
+                data_out = load_unsigned ? {24'b0, read_data_reg[7:0]} : {{24{read_data_reg[7]}}, read_data_reg[7:0]};
+            end else begin
+                data_out = load_unsigned ? {24'b0, read_data_reg[15:8]} : {{24{read_data_reg[15]}}, read_data_reg[15:8]};
+            end
         end else if (width == 2'b01) begin
-            data_out = {16'b0, read_data_reg[15:0]};
+            data_out = load_unsigned ? {16'b0, read_data_reg[15:0]} : {{16{read_data_reg[15]}}, read_data_reg[15:0]};
         end
     end
 
