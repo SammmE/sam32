@@ -141,3 +141,11 @@ time spent: 0 hours
 I didn't have very much time today either, as I had work. I finished the CU logic and testbench today (the testbench took forever!). All of the 'big bad' components are done, now all I have is a bunch of smaller, simpler components.
 
 time spent: 0 hours
+
+## Entry 10
+
+## 6/19/26 - RAM module
+
+In case you're wondering what's been happening the past couple days, I've finished the ALU, CU, Pc register, ROM (program memory), and the register file, but I've been struggling with RAM. I've experimented heavily with MIG (Memory Interface Generator, not Mikoyan-Gurevich) and how I can make modules with it, and unfortunately, most of my test modules were just not it. Eventually, I settled with the premade SRAM-to-DDR module given by Digilent, as that simplifies everything by a lot. I had really hoped for my RAM to be fully under my control and designed by me, but unfortunately, it resulted me being behind my schedule for what modules I wanted to make on what days, so I had to settle for pre-made modules. On the bright side, I changed some stuff in the vhd file to fit my ISA a little better. I did need to use ChatGPT's help here, as I did not know VHDL, and I felt like I was looking at heiroglyphs when I opened the file.
+
+time spent: 0 hours
