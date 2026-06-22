@@ -81,4 +81,10 @@ inline std::unordered_map<sam32::Mnemonic, uint32_t> opcode_map = {
     {sam32::M_LW, 0x4A},   // Op: 10010 (18)
     {sam32::M_LBU, 0x62},  // Op: 11000 (24)
     {sam32::M_LHU, 0x66},  // Op: 11001 (25)
+
+    // Category 11: System & Custom Operations (Category=0b11)
+    {sam32::M_CSRR, 0x03},   // Op: 00000 (0)
+    {sam32::M_CSRW, 0x07},   // Op: 00001 (1)
+    {sam32::M_CSRWI, 0x0B},  // Op: 00010 (2)
+    {sam32::M_RETI, 0x0F},   // Op: 00011 (3)
 };

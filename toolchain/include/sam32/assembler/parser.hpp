@@ -96,12 +96,19 @@ enum Mnemonic {
   M_LHU,
   M_LW,
 
+  // Category 11: System & Custom Operations
+  M_CSRR,
+  M_CSRW,
+  M_CSRWI,
+  M_RETI,
+
   // pseudo-instructions
   M_NOP,
   M_MOV,
   M_CLR,
   M_NEG,
   M_LI,
+  M_LUI,
   M_PUSH,
   M_POP,
   M_PUSHM,
@@ -123,7 +130,9 @@ enum Mnemonic {
   M_BEQZ,
   M_BNEZ,
   M_ABS,
-  M_SEQ
+  M_SEQ,
+  M_EIC,
+  M_DIC
 };
 
 const std::string mnemonic_names[] = {
@@ -141,10 +150,13 @@ const std::string mnemonic_names[] = {
     // Category 10: Memory (Load / Store)
     "sb", "sh", "sw", "lb", "lbu", "lh", "lhu", "lw",
 
+    // Category 11: System & Custom Operations
+    "csrr", "csrw", "csrwi", "reti",
+
     // pseudo-instructions
-    "nop", "mov", "clr", "neg", "li", "push", "pop", "pushm", "popm", "lsl",
+    "nop", "mov", "clr", "neg", "li", "lui", "push", "pop", "pushm", "popm", "lsl",
     "lsr", "asr", "ror", "inc", "dec", "swap", "cmp", "cmn", "tst", "teq",
-    "jmp", "call", "ret", "beqz", "bnez", "abs", "seq"};
+    "jmp", "call", "ret", "beqz", "bnez", "abs", "seq", "eic", "dic"};
 
 enum Directive {
   D_DATA,
@@ -555,6 +567,28 @@ inline const std::vector<InstructionSignature> SIGNATURES = {
                          false,
                          false},
 
+    // Category 11: System & Custom Operations
+    InstructionSignature{M_CSRR,
+                         {{OperandType::IMMEDIATE, OperandType::REGISTER}},
+                         false,
+                         false,
+                         false},
+    InstructionSignature{M_CSRW,
+                         {{OperandType::IMMEDIATE, OperandType::REGISTER}},
+                         false,
+                         false,
+                         false},
+    InstructionSignature{M_CSRWI,
+                         {{OperandType::IMMEDIATE, OperandType::IMMEDIATE}},
+                         false,
+                         false,
+                         false},
+    InstructionSignature{M_RETI,
+                         {{}},
+                         false,
+                         false,
+                         false},
+
     // pseudo-instructions
     InstructionSignature{M_NOP, {{}}, false, false, false},
     InstructionSignature{M_MOV,
@@ -571,6 +605,11 @@ inline const std::vector<InstructionSignature> SIGNATURES = {
     InstructionSignature{M_LI,
                          {{OperandType::REGISTER, OperandType::IMMEDIATE},
                           {OperandType::REGISTER, OperandType::LABEL}},
+                         false,
+                         false,
+                         false},
+    InstructionSignature{M_LUI,
+                         {{OperandType::REGISTER, OperandType::IMMEDIATE}},
                          false,
                          false,
                          false},
@@ -666,11 +705,13 @@ inline const std::vector<InstructionSignature> SIGNATURES = {
                          false,
                          false,
                          false},
-    InstructionSignature{
-        M_SEQ,
-        {{OperandType::REGISTER, OperandType::REGISTER, OperandType::REGISTER}},
-        false,
-        false,
-        false}};
+    InstructionSignature{M_SEQ,
+                         {{OperandType::REGISTER, OperandType::REGISTER,
+                           OperandType::REGISTER}},
+                         false,
+                         false,
+                         false},
+    InstructionSignature{M_EIC, {{}}, false, false, false},
+    InstructionSignature{M_DIC, {{}}, false, false, false}};
 
 }  // namespace sam32

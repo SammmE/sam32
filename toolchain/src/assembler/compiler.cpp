@@ -70,6 +70,19 @@ uint32_t encode_instruction(const ParsedInstruction& instr) {
     machine_code |= (get_reg(1) << 14);
     machine_code |= ((get_imm(2) & 0x1FFF) << 19);
 
+    // Category 11: System & Custom Operations
+  } else if (instr.mnemonic >= M_CSRR && instr.mnemonic <= M_RETI) {
+    if (instr.mnemonic == M_CSRR || instr.mnemonic == M_CSRW) {
+      machine_code |= ((get_imm(0) & 0x1F) << 9);
+      machine_code |= (get_reg(1) << 14);
+    } else if (instr.mnemonic == M_CSRWI) {
+      machine_code |= (1 << 8);
+      machine_code |= ((get_imm(0) & 0x1F) << 9);
+      machine_code |= ((get_imm(1) & 0x1FFF) << 19);
+    } else if (instr.mnemonic == M_RETI) {
+      // Nothing to set, all Reg/Shift fields are 0
+    }
+
     // Category 00: ALU
   } else {
     bool is_r_type = false;
