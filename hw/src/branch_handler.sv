@@ -17,7 +17,7 @@ module branch_handler(
             4'b0010: branch = ~z; // BNE
             4'b0011: branch = n != v; // BLT
             4'b0100: branch = n == v; // BGE
-            4'b0101: branch = z & n == v; // BLE
+            4'b0101: branch = z | (n != v); // BLE
             4'b0110: branch = z == 0 & n == v; // BGT
             4'b0111: branch = c; // BCS
             4'b1000: branch = ~c; // BCC
