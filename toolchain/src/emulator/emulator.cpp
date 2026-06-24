@@ -70,6 +70,11 @@ void Emulator::tick() {
     breakpoints[state.pc]();
   }
 
+  state.mtime++;
+  if (state.gie && state.mtimecmp < state.mtime) {
+    trigger_trap(0x80000001);
+  }
+
   uint32_t instruction = state.read_word(state.pc);
   state.heatmap[state.pc]++;
   execute_instruction(instruction);
@@ -191,7 +196,8 @@ void Emulator::execute_instruction(uint32_t instruction) {
           output_bus = count_leading_zeros(operand1);
           break;
         default:
-          throw std::invalid_argument("Invalid ALU operation");
+          trigger_trap(0);
+          return;
       }
 
       uint32_t unshifted_output = output_bus;
@@ -269,7 +275,8 @@ void Emulator::execute_instruction(uint32_t instruction) {
           should_jump = !state.negative_flag;
           break;
         default:
-          throw std::invalid_argument("Invalid Branch operation");
+          trigger_trap(0);
+          return;
       }
 
       if (should_jump) {
@@ -343,20 +350,34 @@ void Emulator::execute_instruction(uint32_t instruction) {
           state.write_word(addr, state.get_reg(decoded.rd));
           break;
         default:
-          throw std::invalid_argument("Invalid Memory operation");
+          trigger_trap(0);
+          return;
       }
     } break;
     case 3: // System / Custom
     {
-      if (operation == 0) {
-        // HALT
-        return; // Alternatively could throw, but returning early stops PC increment
-      } else {
-        throw std::invalid_argument("Invalid System operation");
+      switch (operation) {
+        case 0: // CSRR
+          state.set_reg(decoded.rs1, state.read_csr(decoded.rd));
+          break;
+        case 1: // CSRW
+          state.write_csr(decoded.rd, operand1);
+          break;
+        case 3: // RETI
+          state.pc = state.epc;
+          state.gie = true;
+          return;
+        case 8: // ECALL
+          trigger_trap(0x00000008);
+          return;
+        default:
+          trigger_trap(0);
+          return;
       }
     } break;
     default:
-      throw std::invalid_argument("Invalid category");
+      trigger_trap(0);
+      return;
   }
   
   state.pc += 4;  // Move to the next instruction
@@ -423,6 +444,51 @@ void EmulatorState::write_word(size_t address, uint32_t value) {
   memory.at(address + 1) = (value >> 8) & 0xFF;
   memory.at(address + 2) = (value >> 16) & 0xFF;
   memory.at(address + 3) = (value >> 24) & 0xFF;
+}
+
+uint32_t EmulatorState::read_csr(uint8_t address) {
+  switch (address) {
+    case 0x00: { // STATUS
+      uint32_t status = 0;
+      if (zero_flag) status |= (1 << 0);
+      if (negative_flag) status |= (1 << 1);
+      if (carry_flag) status |= (1 << 2);
+      if (overflow_flag) status |= (1 << 3);
+      return status;
+    }
+    case 0x01: return epc;
+    case 0x02: return cause;
+    case 0x03: return tvec;
+    case 0x04: return gie ? 1 : 0;
+    case 0x05: return mtime;
+    case 0x06: return mtimecmp;
+    default: return 0;
+  }
+}
+
+void EmulatorState::write_csr(uint8_t address, uint32_t value) {
+  switch (address) {
+    case 0x00: { // STATUS
+      zero_flag = (value & (1 << 0)) != 0;
+      negative_flag = (value & (1 << 1)) != 0;
+      carry_flag = (value & (1 << 2)) != 0;
+      overflow_flag = (value & (1 << 3)) != 0;
+      break;
+    }
+    case 0x01: epc = value; break;
+    case 0x02: cause = value; break;
+    case 0x03: tvec = value; break;
+    case 0x04: gie = (value & 1) != 0; break;
+    case 0x05: mtime = value; break;
+    case 0x06: mtimecmp = value; break;
+  }
+}
+
+void Emulator::trigger_trap(uint32_t trap_cause) {
+  state.epc = state.pc;
+  state.cause = trap_cause;
+  state.gie = false;
+  state.pc = state.tvec + (state.cause * 4);
 }
 
 }  // namespace sam32

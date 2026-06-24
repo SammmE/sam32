@@ -99,8 +99,8 @@ enum Mnemonic {
   // Category 11: System & Custom Operations
   M_CSRR,
   M_CSRW,
-  M_CSRWI,
   M_RETI,
+  M_ECALL,
 
   // pseudo-instructions
   M_NOP,
@@ -108,6 +108,7 @@ enum Mnemonic {
   M_CLR,
   M_NEG,
   M_LI,
+  M_LA,
   M_LUI,
   M_PUSH,
   M_POP,
@@ -151,10 +152,10 @@ const std::string mnemonic_names[] = {
     "sb", "sh", "sw", "lb", "lbu", "lh", "lhu", "lw",
 
     // Category 11: System & Custom Operations
-    "csrr", "csrw", "csrwi", "reti",
+    "csrr", "csrw", "reti", "ecall",
 
     // pseudo-instructions
-    "nop", "mov", "clr", "neg", "li", "lui", "push", "pop", "pushm", "popm", "lsl",
+    "nop", "mov", "clr", "neg", "li", "la", "lui", "push", "pop", "pushm", "popm", "lsl",
     "lsr", "asr", "ror", "inc", "dec", "swap", "cmp", "cmn", "tst", "teq",
     "jmp", "call", "ret", "beqz", "bnez", "abs", "seq", "eic", "dic"};
 
@@ -574,16 +575,17 @@ inline const std::vector<InstructionSignature> SIGNATURES = {
                          false,
                          false},
     InstructionSignature{M_CSRW,
-                         {{OperandType::IMMEDIATE, OperandType::REGISTER}},
-                         false,
-                         false,
-                         false},
-    InstructionSignature{M_CSRWI,
-                         {{OperandType::IMMEDIATE, OperandType::IMMEDIATE}},
+                         {{OperandType::IMMEDIATE, OperandType::REGISTER},
+                          {OperandType::IMMEDIATE, OperandType::IMMEDIATE}},
                          false,
                          false,
                          false},
     InstructionSignature{M_RETI,
+                         {{}},
+                         false,
+                         false,
+                         false},
+    InstructionSignature{M_ECALL,
                          {{}},
                          false,
                          false,
@@ -605,6 +607,11 @@ inline const std::vector<InstructionSignature> SIGNATURES = {
     InstructionSignature{M_LI,
                          {{OperandType::REGISTER, OperandType::IMMEDIATE},
                           {OperandType::REGISTER, OperandType::LABEL}},
+                         false,
+                         false,
+                         false},
+    InstructionSignature{M_LA,
+                         {{OperandType::REGISTER, OperandType::LABEL}},
                          false,
                          false,
                          false},

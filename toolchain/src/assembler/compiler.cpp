@@ -71,15 +71,19 @@ uint32_t encode_instruction(const ParsedInstruction& instr) {
     machine_code |= ((get_imm(2) & 0x1FFF) << 19);
 
     // Category 11: System & Custom Operations
-  } else if (instr.mnemonic >= M_CSRR && instr.mnemonic <= M_RETI) {
-    if (instr.mnemonic == M_CSRR || instr.mnemonic == M_CSRW) {
+  } else if (instr.mnemonic >= M_CSRR && instr.mnemonic <= M_ECALL) {
+    if (instr.mnemonic == M_CSRR) {
       machine_code |= ((get_imm(0) & 0x1F) << 9);
       machine_code |= (get_reg(1) << 14);
-    } else if (instr.mnemonic == M_CSRWI) {
-      machine_code |= (1 << 8);
+    } else if (instr.mnemonic == M_CSRW) {
       machine_code |= ((get_imm(0) & 0x1F) << 9);
-      machine_code |= ((get_imm(1) & 0x1FFF) << 19);
-    } else if (instr.mnemonic == M_RETI) {
+      if (get_type(1) == OperandType::IMMEDIATE) {
+        machine_code |= (1 << 7); // is_rs1_imm
+        machine_code |= ((get_imm(1) & 0x1FFF) << 14);
+      } else {
+        machine_code |= (get_reg(1) << 14);
+      }
+    } else if (instr.mnemonic == M_RETI || instr.mnemonic == M_ECALL) {
       // Nothing to set, all Reg/Shift fields are 0
     }
 

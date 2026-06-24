@@ -56,6 +56,13 @@ struct EmulatorState {
   bool carry_flag;
   bool overflow_flag;
 
+  uint32_t epc = 0;
+  uint32_t cause = 0;
+  uint32_t tvec = 0;
+  bool gie = false;
+  uint32_t mtime = 0;
+  uint32_t mtimecmp = 0;
+
   std::vector<uint8_t> memory;
   InstructionExecutionDetails last_execution;
   std::vector<uint32_t> call_stack;
@@ -70,6 +77,8 @@ struct EmulatorState {
   // registers
   uint32_t get_reg(size_t index);
   void set_reg(size_t index, uint32_t value);
+  uint32_t read_csr(uint8_t address);
+  void write_csr(uint8_t address, uint32_t value);
 
   // memory
   uint8_t read_byte(size_t address);
@@ -97,6 +106,7 @@ struct Emulator {
   void tick();
   void undo();
   void reset();
+  void trigger_trap(uint32_t trap_cause);
 
   void add_breakpoint(size_t address, std::function<void()> callback);
 

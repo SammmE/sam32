@@ -610,6 +610,7 @@ void Parser::flush_instruction(ParsedInstruction& instr) {
       is_pseudo = true;
       break;
 
+    case M_LA:
     case M_LI: {
       uint32_t val32 = 0;
       bool is_label = false;
@@ -666,15 +667,14 @@ void Parser::flush_instruction(ParsedInstruction& instr) {
     case M_LUI: {
       const Operand& rd = instr.operands.at(0);
       uint32_t val32 = instr.operands.at(1).value & 0x1FFF;
-      expanded_instrs.push_back(ParsedInstruction(M_ADD, {rd, Operand::Register(0), Operand::Immediate(val32)}, false, false, SHIFT_LSL, 0));
-      expanded_instrs.push_back(ParsedInstruction(M_ADD, {rd, Operand::Register(0), rd}, false, true, SHIFT_LSL, 13));
+      expanded_instrs.push_back(ParsedInstruction(M_ADD, {rd, Operand::Register(0), Operand::Immediate(val32)}, false, true, SHIFT_LSL, 19));
       is_pseudo = true;
       break;
     }
 
     case M_EIC:
       expanded_instrs.push_back(ParsedInstruction(
-          M_CSRWI,
+          M_CSRW,
           {Operand::Immediate(0x04), Operand::Immediate(1)},
           false, false, SHIFT_LSL, 0));
       is_pseudo = true;
@@ -682,7 +682,7 @@ void Parser::flush_instruction(ParsedInstruction& instr) {
 
     case M_DIC:
       expanded_instrs.push_back(ParsedInstruction(
-          M_CSRWI,
+          M_CSRW,
           {Operand::Immediate(0x04), Operand::Immediate(0)},
           false, false, SHIFT_LSL, 0));
       is_pseudo = true;
