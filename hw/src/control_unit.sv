@@ -25,7 +25,12 @@ module control_unit(
     output logic rjmp, // category 01 and MSB operation bit 1 (register jump)
     output logic Load, // cagtegory 10 and MSB operation bit 1
     output logic Store, // category 10 and MSB operation bit 0
-    output logic [4:0] operation
+    output logic [4:0] operation,
+
+    output logic csr_read, // category 11 and operation 00000
+    output logic csr_write, // category 11 and operation 00001 OR 00010
+    output logic reti, // category 11 and operation 00011
+    output logic ecall // category 11 and operation 01000
 );
     // temp stuff
     logic [1:0] category;
@@ -61,8 +66,12 @@ module control_unit(
         Rs2ImmVal = 13'b0;
         offset = 18'b0;
         operation = op;
+        csr_read = 1'b0;
+        csr_write = 1'b0;
+        reti = 1'b0;
+        ecall = 1'b0;
 
-        if (category == 2'b00) begin // ALU Math
+        if (category == 2'b00 || category == 2'b11) begin // ALU Math and System
             if (~rs1_imm_toggle && ~rs2_imm_toggle) begin
                 // Format R
                 Rd = instruction[13:9];
@@ -104,6 +113,19 @@ module control_unit(
             Rs2ImmVal = instruction[31:19];
             is_offset = 1'b1;
             offset = { {5{instruction[31]}}, instruction[31:19] };
+        end else if (category == 2'b11) begin // System
+            case (op)
+                5'b00000: csr_read = 1'b1;
+                5'b00001, 5'b00010: csr_write = 1'b1;
+                5'b00011: reti = 1'b1;
+                5'b01000: ecall = 1'b1;
+                default: begin
+                    csr_read = 1'b0;
+                    csr_write = 1'b0;
+                    reti = 1'b0;
+                    ecall = 1'b0;
+                end
+            endcase
         end
     end
 

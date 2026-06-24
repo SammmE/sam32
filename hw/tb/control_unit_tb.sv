@@ -11,6 +11,7 @@ module control_unit_tb();
     logic [12:0] Rs1ImmVal, Rs2ImmVal;
     logic [17:0] offset;
     logic        ALUMath, Branch, rjmp, Load, Store;
+    logic        csr_read, csr_write, reti, ecall;
     logic [4:0]  operation;
 
     logic [6:0]  exp_opcode;
@@ -23,6 +24,7 @@ module control_unit_tb();
     logic [12:0] exp_Rs1ImmVal, exp_Rs2ImmVal;
     logic [17:0] exp_offset;
     logic        exp_ALUMath, exp_Branch, exp_rjmp, exp_Load, exp_Store;
+    logic        exp_csr_read, exp_csr_write, exp_reti, exp_ecall;
 
     
     logic [1:0]  cat;
@@ -52,6 +54,7 @@ module control_unit_tb();
         .Rs1Imm(Rs1Imm), .Rs2Imm(Rs2Imm), .is_offset(is_offset),
         .Rs1ImmVal(Rs1ImmVal), .Rs2ImmVal(Rs2ImmVal), .offset(offset),
         .ALUMath(ALUMath), .Branch(Branch), .rjmp(rjmp), .Load(Load), .Store(Store),
+        .csr_read(csr_read), .csr_write(csr_write), .reti(reti), .ecall(ecall),
         .operation(operation)
     );
 
@@ -74,6 +77,16 @@ module control_unit_tb();
         exp_Load = (cat == 2'b10) && instr_in[6];
         exp_Store = (cat == 2'b10) && ~instr_in[6];
         
+        exp_csr_read = 0; exp_csr_write = 0; exp_reti = 0; exp_ecall = 0;
+        if (cat == 2'b11) begin
+            case (op)
+                5'b00000: exp_csr_read = 1'b1;
+                5'b00001, 5'b00010: exp_csr_write = 1'b1;
+                5'b00011: exp_reti = 1'b1;
+                5'b01000: exp_ecall = 1'b1;
+            endcase
+        end
+        
         exp_Rs1Imm = rs1_tog;
         exp_Rs2Imm = rs2_tog;
 
@@ -83,7 +96,7 @@ module control_unit_tb();
         exp_is_offset = 0;
         exp_Rs1ImmVal = 0; exp_Rs2ImmVal = 0; exp_offset = 0;
 
-        if (cat == 2'b00) begin
+        if (cat == 2'b00 || cat == 2'b11) begin
             if (~rs1_tog && ~rs2_tog) begin
                 exp_Rd = instr_in[13:9];
                 exp_Rs1 = instr_in[18:14];
@@ -123,6 +136,10 @@ module control_unit_tb();
         assert(rjmp === exp_rjmp) else $fatal(1, "rjmp flag mismatch for %s", desc_in);
         assert(Load === exp_Load) else $fatal(1, "Load flag mismatch for %s", desc_in);
         assert(Store === exp_Store) else $fatal(1, "Store flag mismatch for %s", desc_in);
+        assert(csr_read === exp_csr_read) else $fatal(1, "csr_read mismatch for %s", desc_in);
+        assert(csr_write === exp_csr_write) else $fatal(1, "csr_write mismatch for %s", desc_in);
+        assert(reti === exp_reti) else $fatal(1, "reti mismatch for %s", desc_in);
+        assert(ecall === exp_ecall) else $fatal(1, "ecall mismatch for %s", desc_in);
         assert(Rs1Imm === exp_Rs1Imm) else $fatal(1, "Rs1Imm mismatch for %s", desc_in);
         assert(Rs2Imm === exp_Rs2Imm) else $fatal(1, "Rs2Imm mismatch for %s", desc_in);
         assert(Rd === exp_Rd) else $fatal(1, "Rd mismatch for %s: Expected %d, got %d", desc_in, exp_Rd, Rd);
@@ -149,7 +166,12 @@ module control_unit_tb();
         test_case({18'b0, 5'd30, 1'b0, 1'b0, 4'b0000, 1'b1, 2'b01}, "Format R-Branch");
         test_case({13'h004, 5'd31, 5'd5, 1'b1, 1'b0, 5'b10010, 2'b10}, "Load (LW)");
         test_case({13'h008, 5'd31, 5'd5, 1'b1, 1'b0, 5'b00010, 2'b10}, "Store (SW)");
-        test_case(32'hFFFFFFFF, "Invalid/System (Cat 11)");
+        test_case({1'b0, 5'd0, 2'b00, 5'd0, 5'd5, 5'd1, 2'b00, 5'b00000, 2'b11}, "System: CSRR");
+        test_case({1'b0, 5'd0, 2'b00, 5'd0, 5'd10, 5'd3, 2'b00, 5'b00001, 2'b11}, "System: CSRW");
+        test_case({13'h1A2, 5'd0, 5'd4, 1'b1, 1'b0, 5'b00010, 2'b11}, "System: CSRWI");
+        test_case({1'b0, 5'd0, 2'b00, 5'd0, 5'd0, 5'd0, 2'b00, 5'b00011, 2'b11}, "System: RETI");
+        test_case({1'b0, 5'd0, 2'b00, 5'd0, 5'd0, 5'd0, 2'b00, 5'b01000, 2'b11}, "System: ECALL");
+        test_case(32'hFFFFFFFF, "System: Invalid op (all 1s)");
 
         $display("Starting 1000 Randomized Tests...");
         
@@ -165,19 +187,19 @@ module control_unit_tb();
             rand_st = $urandom;
             rand_fs = $urandom;
 
-            if (rand_cat == 2'b00) begin
+            if (rand_cat == 2'b00 || rand_cat == 2'b11) begin
                 case ($urandom_range(0, 2))
                     0: begin
-                        rand_instr = {rand_fs, rand_sa, rand_st, rand_rs2, rand_rs1, rand_rd, 2'b00, rand_op, 2'b00};
-                        desc = "Rand Format R";
+                        rand_instr = {rand_fs, rand_sa, rand_st, rand_rs2, rand_rs1, rand_rd, 2'b00, rand_op, rand_cat};
+                        desc = (rand_cat == 2'b00) ? "Rand Format R (ALU)" : "Rand Format R (SYS)";
                     end
                     1: begin
-                        rand_instr = {rand_imm13, rand_rs1, rand_rd, 1'b1, 1'b0, rand_op, 2'b00};
-                        desc = "Rand Format I-A";
+                        rand_instr = {rand_imm13, rand_rs1, rand_rd, 1'b1, 1'b0, rand_op, rand_cat};
+                        desc = (rand_cat == 2'b00) ? "Rand Format I-A (ALU)" : "Rand Format I-A (SYS)";
                     end
                     2: begin
-                        rand_instr = {rand_rs2, rand_imm13, rand_rd, 1'b0, 1'b1, rand_op, 2'b00};
-                        desc = "Rand Format I-B";
+                        rand_instr = {rand_rs2, rand_imm13, rand_rd, 1'b0, 1'b1, rand_op, rand_cat};
+                        desc = (rand_cat == 2'b00) ? "Rand Format I-B (ALU)" : "Rand Format I-B (SYS)";
                     end
                 endcase
             end else if (rand_cat == 2'b01) begin
