@@ -27,6 +27,7 @@ module csr_file(
     assign csr_rd = csrs[csr_addr];
 
     always_ff @(posedge clk) begin
+        csrs[5] <= MTIME + 1;
         if (we && csr_addr < 7) begin
             csrs[csr_addr] <= wd;
         end
