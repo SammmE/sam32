@@ -4,6 +4,10 @@ module pc_reg(
     input logic clk,
     input logic rst,
     input logic en,
+    input logic trap,
+    input logic reti,
+    input logic [31:0] tvec,
+    input logic [31:0] epc,
     input logic src, // 0: PC+4, 1: d_in
     input logic [31:0] d_in,
     output logic [31:0] q_out
@@ -12,6 +16,10 @@ module pc_reg(
     always_ff @(posedge clk or posedge rst) begin
         if (rst) begin
             q_out <= 32'b0;
+        end else if (trap) begin
+            q_out <= tvec;
+        end else if (reti) begin
+            q_out <= epc;
         end else if (en) begin
             if (src == 1'b0) begin
                 q_out <= q_out + 4; // PC + 4

@@ -30,7 +30,7 @@ module reg_file_tb();
 
         we = 1; rd = 5'd5; wd = 32'hCAFEBABE;
         @(posedge clk);
-        
+        #1;
         we = 0;
         rs1 = 5'd5; rs2 = 5'd5; 
         #1;

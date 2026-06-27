@@ -60,8 +60,8 @@ module ram2ddrxadc (
 
     always_ff @(posedge ui_clk_o) begin
         if (~ram_cen && ~ram_wen) begin
-            if (~ram_lb) mock_mem[ram_a][7:0] <= ram_dq_i[7:0];
-            if (~ram_ub) mock_mem[ram_a][15:8] <= ram_dq_i[15:8];
+            if (~ram_lb) mock_mem[ram_a][7:0] = ram_dq_i[7:0];
+            if (~ram_ub) mock_mem[ram_a][15:8] = ram_dq_i[15:8];
         end
     end
 

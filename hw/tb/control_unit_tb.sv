@@ -2,6 +2,10 @@
 
 module control_unit_tb();
     logic [31:0] instruction;
+    logic        interrupt;
+    logic        gie;
+    logic        mem_fault;
+    
     logic [6:0]  opcode;
     logic [4:0]  Rd, Rs1, Rs2;
     logic [1:0]  st;
@@ -12,6 +16,8 @@ module control_unit_tb();
     logic [17:0] offset;
     logic        ALUMath, Branch, rjmp, Load, Store;
     logic        csr_read, csr_write, reti, ecall;
+    logic        trap;
+    logic [31:0] trap_cause;
     logic [4:0]  operation;
 
     logic [6:0]  exp_opcode;
@@ -25,6 +31,8 @@ module control_unit_tb();
     logic [17:0] exp_offset;
     logic        exp_ALUMath, exp_Branch, exp_rjmp, exp_Load, exp_Store;
     logic        exp_csr_read, exp_csr_write, exp_reti, exp_ecall;
+    logic        exp_trap;
+    logic [31:0] exp_trap_cause;
 
     
     logic [1:0]  cat;
@@ -43,11 +51,17 @@ module control_unit_tb();
     logic [4:0]  rand_sa;
     logic [1:0]  rand_st;
     logic        rand_fs;
+    logic        rand_int;
+    logic        rand_gie;
+    logic        rand_mem_fault;
     string       desc;
     int          i;
 
     control_unit dut (
         .instruction(instruction),
+        .interrupt(interrupt),
+        .gie(gie),
+        .mem_fault(mem_fault),
         .opcode(opcode),
         .Rd(Rd), .Rs1(Rs1), .Rs2(Rs2),
         .st(st), .sa(sa), .fs(fs),
@@ -55,12 +69,17 @@ module control_unit_tb();
         .Rs1ImmVal(Rs1ImmVal), .Rs2ImmVal(Rs2ImmVal), .offset(offset),
         .ALUMath(ALUMath), .Branch(Branch), .rjmp(rjmp), .Load(Load), .Store(Store),
         .csr_read(csr_read), .csr_write(csr_write), .reti(reti), .ecall(ecall),
+        .trap(trap),
+        .trap_cause(trap_cause),
         .operation(operation)
     );
 
     
-    task automatic test_case(input logic [31:0] instr_in, input string desc_in);
+    task automatic test_case(input logic [31:0] instr_in, input logic int_in, input logic gie_in, input logic mem_fault_in, input string desc_in);
         instruction = instr_in;
+        interrupt = int_in;
+        gie = gie_in;
+        mem_fault = mem_fault_in;
         #10;
 
         cat = instr_in[1:0];
@@ -71,22 +90,6 @@ module control_unit_tb();
         exp_opcode = instr_in[6:0];
         exp_operation = op;
         
-        exp_ALUMath = (cat == 2'b00);
-        exp_Branch = (cat == 2'b01);
-        exp_rjmp = (cat == 2'b01) && instr_in[6];
-        exp_Load = (cat == 2'b10) && instr_in[6];
-        exp_Store = (cat == 2'b10) && ~instr_in[6];
-        
-        exp_csr_read = 0; exp_csr_write = 0; exp_reti = 0; exp_ecall = 0;
-        if (cat == 2'b11) begin
-            case (op)
-                5'b00000: exp_csr_read = 1'b1;
-                5'b00001, 5'b00010: exp_csr_write = 1'b1;
-                5'b00011: exp_reti = 1'b1;
-                5'b01000: exp_ecall = 1'b1;
-            endcase
-        end
-        
         exp_Rs1Imm = rs1_tog;
         exp_Rs2Imm = rs2_tog;
 
@@ -95,40 +98,70 @@ module control_unit_tb();
         exp_st = 0; exp_sa = 0; exp_fs = 0;
         exp_is_offset = 0;
         exp_Rs1ImmVal = 0; exp_Rs2ImmVal = 0; exp_offset = 0;
+        
+        exp_trap = (int_in & gie_in) | mem_fault_in;
+        exp_trap_cause = 32'b0;
+        if (mem_fault_in) begin
+            exp_trap_cause = 32'h0000_0005;
+        end else if (int_in & gie_in) begin
+            exp_trap_cause = 32'h8000_0001;
+        end
+        
+        exp_ALUMath = 0; exp_Branch = 0; exp_rjmp = 0; exp_Load = 0; exp_Store = 0;
+        exp_csr_read = 0; exp_csr_write = 0; exp_reti = 0; exp_ecall = 0;
 
-        if (cat == 2'b00 || cat == 2'b11) begin
-            if (~rs1_tog && ~rs2_tog) begin
-                exp_Rd = instr_in[13:9];
-                exp_Rs1 = instr_in[18:14];
-                exp_Rs2 = instr_in[23:19];
-                exp_st = instr_in[25:24];
-                exp_sa = instr_in[30:26];
-                exp_fs = instr_in[31];
-            end else if (rs2_tog && ~rs1_tog) begin
+        if (!exp_trap) begin
+            exp_ALUMath = (cat == 2'b00);
+            exp_Branch = (cat == 2'b01);
+            exp_rjmp = (cat == 2'b01) && instr_in[6];
+            exp_Load = (cat == 2'b10) && instr_in[6];
+            exp_Store = (cat == 2'b10) && ~instr_in[6];
+            
+            if (cat == 2'b11) begin
+                case (op)
+                    5'b00000: exp_csr_read = 1'b1;
+                    5'b00001, 5'b00010: exp_csr_write = 1'b1;
+                    5'b00011: exp_reti = 1'b1;
+                    5'b01000: exp_ecall = 1'b1;
+                endcase
+            end
+            
+            if (cat == 2'b00 || cat == 2'b11) begin
+                if (~rs1_tog && ~rs2_tog) begin
+                    exp_Rd = instr_in[13:9];
+                    exp_Rs1 = instr_in[18:14];
+                    exp_Rs2 = instr_in[23:19];
+                    exp_st = instr_in[25:24];
+                    exp_sa = instr_in[30:26];
+                    exp_fs = instr_in[31];
+                end else if (rs2_tog && ~rs1_tog) begin
+                    exp_Rd = instr_in[13:9];
+                    exp_Rs1 = instr_in[18:14];
+                    exp_Rs2ImmVal = instr_in[31:19];
+                end else if (rs1_tog && ~rs2_tog) begin
+                    exp_Rd = instr_in[13:9];
+                    exp_Rs2 = instr_in[31:27];
+                    exp_Rs1ImmVal = instr_in[26:14];
+                end
+            end else if (cat == 2'b01) begin
+                if (rs1_tog && rs2_tog) begin
+                    exp_Rd = instr_in[13:9];
+                    exp_is_offset = 1;
+                    exp_offset = instr_in[31:14];
+                end else if (~rs1_tog && ~rs2_tog && instr_in[6]) begin
+                    exp_Rs1 = instr_in[13:9];
+                end
+            end else if (cat == 2'b10) begin
                 exp_Rd = instr_in[13:9];
                 exp_Rs1 = instr_in[18:14];
                 exp_Rs2ImmVal = instr_in[31:19];
-            end else if (rs1_tog && ~rs2_tog) begin
-                exp_Rd = instr_in[13:9];
-                exp_Rs2 = instr_in[31:27];
-                exp_Rs1ImmVal = instr_in[26:14];
-            end
-        end else if (cat == 2'b01) begin
-            if (rs1_tog && rs2_tog) begin
-                exp_Rd = instr_in[13:9];
                 exp_is_offset = 1;
-                exp_offset = instr_in[31:14];
-            end else if (~rs1_tog && ~rs2_tog && instr_in[6]) begin
-                exp_Rs1 = instr_in[13:9];
+                exp_offset = { {5{instr_in[31]}}, instr_in[31:19] };
             end
-        end else if (cat == 2'b10) begin
-            exp_Rd = instr_in[13:9];
-            exp_Rs1 = instr_in[18:14];
-            exp_Rs2ImmVal = instr_in[31:19];
-            exp_is_offset = 1;
-            exp_offset = { {5{instr_in[31]}}, instr_in[31:19] };
         end
 
+        assert(trap === exp_trap) else $fatal(1, "Trap flag mismatch for %s", desc_in);
+        assert(trap_cause === exp_trap_cause) else $fatal(1, "Trap Cause mismatch for %s: Expected %h, got %h", desc_in, exp_trap_cause, trap_cause);
         assert(opcode === exp_opcode) else $fatal(1, "Opcode mismatch for %s: Expected %b, got %b", desc_in, exp_opcode, opcode);
         assert(operation === exp_operation) else $fatal(1, "Operation mismatch for %s: Expected %b, got %b", desc_in, exp_operation, operation);
         assert(ALUMath === exp_ALUMath) else $fatal(1, "ALUMath flag mismatch for %s", desc_in);
@@ -153,25 +186,31 @@ module control_unit_tb();
         assert(Rs2ImmVal === exp_Rs2ImmVal) else $fatal(1, "Rs2ImmVal mismatch for %s: Expected %h, got %h", desc_in, exp_Rs2ImmVal, Rs2ImmVal);
         assert(offset === exp_offset) else $fatal(1, "Offset mismatch for %s: Expected %h, got %h", desc_in, exp_offset, offset);
 
-        $display("Test passed for %s (Instr: %h)", desc_in, instr_in);
+        $display("Test passed for %s (Instr: %h, Int: %b, GIE: %b)", desc_in, instr_in, int_in, gie_in);
     endtask
 
     initial begin
         $display("Starting Control Unit Testbench...");
         
-        test_case({1'b1, 5'd4, 2'b01, 5'd15, 5'd10, 5'd5, 2'b00, 5'b00000, 2'b00}, "Format R (ALU)");
-        test_case({13'h1A2, 5'd10, 5'd5, 1'b1, 1'b0, 5'b00001, 2'b00}, "Format I-A (ALU)");
-        test_case({5'd15, 13'h064, 5'd5, 1'b0, 1'b1, 5'b00001, 2'b00}, "Format I-B (ALU)");
-        test_case({18'd2048, 5'd0, 1'b1, 1'b1, 4'b0000, 1'b0, 2'b01}, "Format J (Branch)");
-        test_case({18'b0, 5'd30, 1'b0, 1'b0, 4'b0000, 1'b1, 2'b01}, "Format R-Branch");
-        test_case({13'h004, 5'd31, 5'd5, 1'b1, 1'b0, 5'b10010, 2'b10}, "Load (LW)");
-        test_case({13'h008, 5'd31, 5'd5, 1'b1, 1'b0, 5'b00010, 2'b10}, "Store (SW)");
-        test_case({1'b0, 5'd0, 2'b00, 5'd0, 5'd5, 5'd1, 2'b00, 5'b00000, 2'b11}, "System: CSRR");
-        test_case({1'b0, 5'd0, 2'b00, 5'd0, 5'd10, 5'd3, 2'b00, 5'b00001, 2'b11}, "System: CSRW");
-        test_case({13'h1A2, 5'd0, 5'd4, 1'b1, 1'b0, 5'b00010, 2'b11}, "System: CSRWI");
-        test_case({1'b0, 5'd0, 2'b00, 5'd0, 5'd0, 5'd0, 2'b00, 5'b00011, 2'b11}, "System: RETI");
-        test_case({1'b0, 5'd0, 2'b00, 5'd0, 5'd0, 5'd0, 2'b00, 5'b01000, 2'b11}, "System: ECALL");
-        test_case(32'hFFFFFFFF, "System: Invalid op (all 1s)");
+        test_case({1'b1, 5'd4, 2'b01, 5'd15, 5'd10, 5'd5, 2'b00, 5'b00000, 2'b00}, 0, 0, 0, "Format R (ALU)");
+        test_case({13'h1A2, 5'd10, 5'd5, 1'b1, 1'b0, 5'b00001, 2'b00}, 0, 0, 0, "Format I-A (ALU)");
+        test_case({5'd15, 13'h064, 5'd5, 1'b0, 1'b1, 5'b00001, 2'b00}, 0, 0, 0, "Format I-B (ALU)");
+        test_case({18'd2048, 5'd0, 1'b1, 1'b1, 4'b0000, 1'b0, 2'b01}, 0, 0, 0, "Format J (Branch)");
+        test_case({18'b0, 5'd30, 1'b0, 1'b0, 4'b0000, 1'b1, 2'b01}, 0, 0, 0, "Format R-Branch");
+        test_case({13'h004, 5'd31, 5'd5, 1'b1, 1'b0, 5'b10010, 2'b10}, 0, 0, 0, "Load (LW)");
+        test_case({13'h008, 5'd31, 5'd5, 1'b1, 1'b0, 5'b00010, 2'b10}, 0, 0, 0, "Store (SW)");
+        test_case({1'b0, 5'd0, 2'b00, 5'd0, 5'd5, 5'd1, 2'b00, 5'b00000, 2'b11}, 0, 0, 0, "System: CSRR");
+        test_case({1'b0, 5'd0, 2'b00, 5'd0, 5'd10, 5'd3, 2'b00, 5'b00001, 2'b11}, 0, 0, 0, "System: CSRW");
+        test_case({13'h1A2, 5'd0, 5'd4, 1'b1, 1'b0, 5'b00010, 2'b11}, 0, 0, 0, "System: CSRWI");
+        test_case({1'b0, 5'd0, 2'b00, 5'd0, 5'd0, 5'd0, 2'b00, 5'b00011, 2'b11}, 0, 0, 0, "System: RETI");
+        test_case({1'b0, 5'd0, 2'b00, 5'd0, 5'd0, 5'd0, 2'b00, 5'b01000, 2'b11}, 0, 0, 0, "System: ECALL");
+        test_case(32'hFFFFFFFF, 0, 0, 0, "System: Invalid op (all 1s)");
+
+        // Trap Tests
+        test_case({13'h008, 5'd31, 5'd5, 1'b1, 1'b0, 5'b00010, 2'b10}, 1, 1, 0, "Trap Asserted (Interrupt)");
+        test_case({13'h008, 5'd31, 5'd5, 1'b1, 1'b0, 5'b00010, 2'b10}, 1, 0, 0, "Trap Ignored (GIE=0)");
+        test_case({13'h008, 5'd31, 5'd5, 1'b1, 1'b0, 5'b00010, 2'b10}, 0, 1, 1, "Trap Asserted (Mem Fault)");
+        test_case({13'h008, 5'd31, 5'd5, 1'b1, 1'b0, 5'b00010, 2'b10}, 1, 1, 1, "Trap Asserted (Mem Fault + Int Priority)");
 
         $display("Starting 1000 Randomized Tests...");
         
@@ -186,6 +225,9 @@ module control_unit_tb();
             rand_sa = $urandom;
             rand_st = $urandom;
             rand_fs = $urandom;
+            rand_int = $urandom_range(0, 1);
+            rand_gie = $urandom_range(0, 1);
+            rand_mem_fault = $urandom_range(0, 1);
 
             if (rand_cat == 2'b00 || rand_cat == 2'b11) begin
                 case ($urandom_range(0, 2))
@@ -215,7 +257,7 @@ module control_unit_tb();
                 desc = "Rand Mem (I-A layout)";
             end
 
-            test_case(rand_instr, desc);
+            test_case(rand_instr, rand_int, rand_gie, rand_mem_fault, desc);
         end
 
         $display("ALL TESTS PASSED SUCCESSFULLY!");

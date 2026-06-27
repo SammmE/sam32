@@ -1,3 +1,5 @@
+`timescale 1ns / 1ps
+
 module branch_handler(
     input logic [4:0] operation,
     input logic z,

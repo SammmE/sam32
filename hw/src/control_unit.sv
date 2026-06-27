@@ -2,7 +2,12 @@
 
 module control_unit(
     input logic [31:0] instruction,
+    input logic interrupt,
+    input logic gie,
+    input logic mem_fault,
 
+    output logic trap,
+    output logic [31:0] trap_cause,
     output logic [6:0] opcode,
 
     output logic [4:0] Rd,
@@ -44,12 +49,14 @@ module control_unit(
     assign rs2_imm_toggle = instruction[8];
 
     assign opcode = instruction[6:0];
+    
+    assign trap = (interrupt & gie) | mem_fault;
 
-    assign ALUMath = (category == 2'b00);
-    assign Branch = (category == 2'b01);
-    assign rjmp = (category == 2'b01) && instruction[6]; // MSB of operatoin field
-    assign Load = (category == 2'b10) && instruction[6];
-    assign Store = (category == 2'b10) && ~instruction[6];
+    assign ALUMath = (category == 2'b00) & ~trap;
+    assign Branch = (category == 2'b01) & ~trap;
+    assign rjmp = (category == 2'b01) && instruction[6] & ~trap;
+    assign Load = (category == 2'b10) && instruction[6] & ~trap;
+    assign Store = (category == 2'b10) && ~instruction[6] & ~trap;
 
     assign Rs1Imm = rs1_imm_toggle;
     assign Rs2Imm = rs2_imm_toggle;
@@ -70,62 +77,76 @@ module control_unit(
         csr_write = 1'b0;
         reti = 1'b0;
         ecall = 1'b0;
+        trap_cause = 32'b0;
+        
+        if (mem_fault) begin
+            trap_cause = 32'h0000_0005; // Memory Protection Exception
+        end else if (interrupt & gie) begin
+            trap_cause = 32'h8000_0001; // Machine Timer Interrupt
+        end
 
-        if (category == 2'b00 || category == 2'b11) begin // ALU Math and System
-            if (~rs1_imm_toggle && ~rs2_imm_toggle) begin
-                // Format R
-                Rd = instruction[13:9];
-                Rs1 = instruction[18:14];
-                Rs2 = instruction[23:19];
-                st = instruction[25:24];
-                sa = instruction[30:26];
-                fs = instruction[31];
+        if (trap) begin
+            // Trap overrides normal instruction decode
+        end else begin
+            if (category == 2'b00 || category == 2'b11) begin // ALU Math and System
+                if (~rs1_imm_toggle && ~rs2_imm_toggle) begin
+                    // Format R
+                    Rd = instruction[13:9];
+                    Rs1 = instruction[18:14];
+                    Rs2 = instruction[23:19];
+                    st = instruction[25:24];
+                    sa = instruction[30:26];
+                    fs = instruction[31];
+                    
+                end else if (rs2_imm_toggle && ~rs1_imm_toggle) begin
+                    // Format I-A
+                    Rd = instruction[13:9];
+                    Rs1 = instruction[18:14];
+                    Rs2ImmVal = instruction[31:19];
+                    
+                end else if (rs1_imm_toggle && ~rs2_imm_toggle) begin
+                    // Format I-B 
+                    Rd = instruction[13:9];
+                    Rs2 = instruction[31:27];
+                    Rs1ImmVal = instruction[26:14];
+                end
+            end
+            
+            if (category == 2'b01) begin // Branch / Jump
+                if (rs1_imm_toggle && rs2_imm_toggle) begin
+                    // Format J
+                    Rd = instruction[13:9];
+                    is_offset = 1'b1;
+                    offset = instruction[31:14];
+                    
+                end else if (~rs1_imm_toggle && ~rs2_imm_toggle && instruction[6]) begin
+                    // Format R-Branch
+                    Rs1 = instruction[13:9];
+                end
                 
-            end else if (rs2_imm_toggle && ~rs1_imm_toggle) begin
-                // Format I-A
+            end else if (category == 2'b10) begin // Memory (Load/Store)
+                // Memory strictly uses Format I-A layout
                 Rd = instruction[13:9];
                 Rs1 = instruction[18:14];
                 Rs2ImmVal = instruction[31:19];
-                
-            end else if (rs1_imm_toggle && ~rs2_imm_toggle) begin
-                // Format I-B 
-                Rd = instruction[13:9];
-                Rs2 = instruction[31:27];
-                Rs1ImmVal = instruction[26:14];
-            end
-            
-        end else if (category == 2'b01) begin // Branch / Jump
-            if (rs1_imm_toggle && rs2_imm_toggle) begin
-                // Format J
-                Rd = instruction[13:9];
                 is_offset = 1'b1;
-                offset = instruction[31:14];
-                
-            end else if (~rs1_imm_toggle && ~rs2_imm_toggle && instruction[6]) begin
-                // Format R-Branch
-                Rs1 = instruction[13:9];
+                offset = { {5{instruction[31]}}, instruction[31:19] };
             end
             
-        end else if (category == 2'b10) begin // Memory (Load/Store)
-            // Memory strictly uses Format I-A layout
-            Rd = instruction[13:9];
-            Rs1 = instruction[18:14];
-            Rs2ImmVal = instruction[31:19];
-            is_offset = 1'b1;
-            offset = { {5{instruction[31]}}, instruction[31:19] };
-        end else if (category == 2'b11) begin // System
-            case (op)
-                5'b00000: csr_read = 1'b1;
-                5'b00001, 5'b00010: csr_write = 1'b1;
-                5'b00011: reti = 1'b1;
-                5'b01000: ecall = 1'b1;
-                default: begin
-                    csr_read = 1'b0;
-                    csr_write = 1'b0;
-                    reti = 1'b0;
-                    ecall = 1'b0;
-                end
-            endcase
+            if (category == 2'b11) begin // System
+                case (op)
+                    5'b00000: csr_read = 1'b1;
+                    5'b00001, 5'b00010: csr_write = 1'b1;
+                    5'b00011: reti = 1'b1;
+                    5'b01000: ecall = 1'b1;
+                    default: begin
+                        csr_read = 1'b0;
+                        csr_write = 1'b0;
+                        reti = 1'b0;
+                        ecall = 1'b0;
+                    end
+                endcase
+            end
         end
     end
 
