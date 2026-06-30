@@ -1,6 +1,7 @@
 #include <fmt/core.h>
 #include <imgui.h>
 #include <fstream>
+#include <chrono>
 
 #include <sam32/emulator/IconsCodicons.h>
 #include <sam32/assembler/parser.hpp>
@@ -188,7 +189,14 @@ void EmulatorGui::render() {
   }
 
   if (is_running) {
-    safe_tick();
+    auto start = std::chrono::high_resolution_clock::now();
+    while (is_running) {
+      safe_tick();
+      auto now = std::chrono::high_resolution_clock::now();
+      if (std::chrono::duration_cast<std::chrono::milliseconds>(now - start).count() >= 16) {
+        break;
+      }
+    }
   }
 
   window_size = ImGui::GetIO().DisplaySize;
@@ -281,6 +289,21 @@ void EmulatorGui::render_controls() {
   }
   if (ImGui::IsItemHovered())
     ImGui::SetTooltip("Step Out");
+
+  ImGui::SameLine();
+  if (emulator.capped_clock_speed) {
+    if (ImGui::Button(ICON_CI_CLOCK)) {
+      emulator.capped_clock_speed = false;
+    }
+    if (ImGui::IsItemHovered())
+      ImGui::SetTooltip("Clock: 100 MHz");
+  } else {
+    if (ImGui::Button(ICON_CI_ZAP)) {
+      emulator.capped_clock_speed = true;
+    }
+    if (ImGui::IsItemHovered())
+      ImGui::SetTooltip("Clock: Uncapped");
+  }
 
   ImGui::Separator();
   if (ImGui::Button(ICON_CI_SAVE " Save State")) {

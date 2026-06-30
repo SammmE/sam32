@@ -56,7 +56,9 @@ Instruction_t::Instruction_t(uint32_t instruction) : raw(instruction) {
   }
 }
 
-Emulator::Emulator(size_t memory_size, bool allow_placeholders) : state(memory_size), allow_placeholders(allow_placeholders) {}
+Emulator::Emulator(size_t memory_size, bool allow_placeholders) : state(memory_size), allow_placeholders(allow_placeholders) {
+  last_tick_time = std::chrono::high_resolution_clock::now();
+}
 
 void Emulator::load_program(const std::vector<uint8_t>& program,
                             size_t start_address) {
@@ -66,6 +68,20 @@ void Emulator::load_program(const std::vector<uint8_t>& program,
 }
 
 void Emulator::tick() {
+  if (capped_clock_speed) {
+    auto now = std::chrono::high_resolution_clock::now();
+    while (std::chrono::duration_cast<std::chrono::nanoseconds>(now - last_tick_time).count() < 10) {
+      now = std::chrono::high_resolution_clock::now();
+    }
+    last_tick_time = now;
+  } else {
+    auto now = std::chrono::high_resolution_clock::now();
+    while (std::chrono::duration_cast<std::chrono::microseconds>(now - last_tick_time).count() < 10) {
+      now = std::chrono::high_resolution_clock::now();
+    }
+    last_tick_time = now;
+  }
+
   if (breakpoints.count(state.pc)) {
     breakpoints[state.pc]();
   }
@@ -85,6 +101,9 @@ void Emulator::tick() {
     }
   }
 
+  if (history.size() > 100) {
+    history.erase(history.begin());
+  }
   history.push_back(state);
   cycle_count++;
 }
@@ -418,28 +437,69 @@ void EmulatorState::set_reg(size_t index, uint32_t value) {
 }
 
 uint8_t EmulatorState::read_byte(size_t address) {
-  return memory.at(address);
+  if ((address & 0x80000000) == 0) {
+    if (address < umem_limit && (address + umem_base) < memory.size()) {
+      return memory.at(address + umem_base);
+    }
+    return 0;
+  }
+  return memory.at(address); // Peripheral or direct access
 }
 
 uint16_t EmulatorState::read_halfword(size_t address) {
+  if ((address & 0x80000000) == 0) {
+    if (address < umem_limit && (address + umem_base + 1) < memory.size()) {
+      return memory.at(address + umem_base) | (memory.at(address + umem_base + 1) << 8);
+    }
+    return 0;
+  }
   return memory.at(address) | (memory.at(address + 1) << 8);
 }
 
 uint32_t EmulatorState::read_word(size_t address) {
+  if ((address & 0x80000000) == 0) {
+    if (address < umem_limit && (address + umem_base + 3) < memory.size()) {
+      return memory.at(address + umem_base) | (memory.at(address + umem_base + 1) << 8) |
+             (memory.at(address + umem_base + 2) << 16) | (memory.at(address + umem_base + 3) << 24);
+    }
+    return 0;
+  }
   return memory.at(address) | (memory.at(address + 1) << 8) |
          (memory.at(address + 2) << 16) | (memory.at(address + 3) << 24);
 }
 
 void EmulatorState::write_byte(size_t address, uint8_t value) {
+  if ((address & 0x80000000) == 0) {
+    if (address < umem_limit && (address + umem_base) < memory.size()) {
+      memory.at(address + umem_base) = value;
+    }
+    return;
+  }
   memory.at(address) = value;
 }
 
 void EmulatorState::write_halfword(size_t address, uint16_t value) {
+  if ((address & 0x80000000) == 0) {
+    if (address < umem_limit && (address + umem_base + 1) < memory.size()) {
+      memory.at(address + umem_base) = value & 0xFF;
+      memory.at(address + umem_base + 1) = (value >> 8) & 0xFF;
+    }
+    return;
+  }
   memory.at(address) = value & 0xFF;
   memory.at(address + 1) = (value >> 8) & 0xFF;
 }
 
 void EmulatorState::write_word(size_t address, uint32_t value) {
+  if ((address & 0x80000000) == 0) {
+    if (address < umem_limit && (address + umem_base + 3) < memory.size()) {
+      memory.at(address + umem_base) = value & 0xFF;
+      memory.at(address + umem_base + 1) = (value >> 8) & 0xFF;
+      memory.at(address + umem_base + 2) = (value >> 16) & 0xFF;
+      memory.at(address + umem_base + 3) = (value >> 24) & 0xFF;
+    }
+    return;
+  }
   memory.at(address) = value & 0xFF;
   memory.at(address + 1) = (value >> 8) & 0xFF;
   memory.at(address + 2) = (value >> 16) & 0xFF;
@@ -462,8 +522,11 @@ uint32_t EmulatorState::read_csr(uint8_t address) {
     case 0x04: return gie ? 1 : 0;
     case 0x05: return mtime;
     case 0x06: return mtimecmp;
-    default: return 0;
+    case 0x07: return 0; // BOOT
+    case 0x08: return umem_base;
+    case 0x09: return umem_limit;
   }
+  return 0;
 }
 
 void EmulatorState::write_csr(uint8_t address, uint32_t value) {
@@ -481,6 +544,8 @@ void EmulatorState::write_csr(uint8_t address, uint32_t value) {
     case 0x04: gie = (value & 1) != 0; break;
     case 0x05: mtime = value; break;
     case 0x06: mtimecmp = value; break;
+    case 0x08: umem_base = value; break;
+    case 0x09: umem_limit = value; break;
   }
 }
 
@@ -488,7 +553,7 @@ void Emulator::trigger_trap(uint32_t trap_cause) {
   state.epc = state.pc;
   state.cause = trap_cause;
   state.gie = false;
-  state.pc = state.tvec + (state.cause * 4);
+  state.pc = state.tvec;
 }
 
 }  // namespace sam32

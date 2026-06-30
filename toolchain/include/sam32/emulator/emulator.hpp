@@ -1,5 +1,6 @@
 #pragma once
 
+#include <chrono>
 #include <cstdint>
 #include <functional>
 #include <unordered_map>
@@ -62,6 +63,8 @@ struct EmulatorState {
   bool gie = false;
   uint32_t mtime = 0;
   uint32_t mtimecmp = 0;
+  uint32_t umem_base = 0;
+  uint32_t umem_limit = 0xFFFFFFFF; // Default to full memory access
 
   std::vector<uint8_t> memory;
   InstructionExecutionDetails last_execution;
@@ -98,6 +101,8 @@ struct Emulator {
   std::unordered_map<size_t, std::function<void()>> watchpoints;
   size_t cycle_count = 0;
   bool allow_placeholders;
+  bool capped_clock_speed = true;
+  std::chrono::high_resolution_clock::time_point last_tick_time;
 
   Emulator(size_t memory_size = 1024 * 1024, bool allow_placeholders = false);  // Default to 1MB of memory
 
