@@ -2,12 +2,14 @@
 
 ## **1. Core Overview**
 
-The SAM32 is a fixed-width 32-bit RISC processor operating on a strict Load/Store paradigm. 
+The SAM32 is a fixed-width 32-bit RISC processor operating on a strict load/store paradigm. 
 
-Key features:
-*   **Commutative Immediate Toggles:** Inject an immediate value into *either* the first or second operand slot dynamically (useful for non-commutative math like subtraction).
-*   **Output Barrel Shifter & Rotator:** Hardware support for shifting and rotating the **ALU output result** before it is written to the destination register in R-Type operations.
+**Key Features:**
+*   **Commutative Immediate Toggles:** Allows injection of an immediate value into either the first or second operand slot dynamically, facilitating non-commutative operations such as subtraction.
+*   **Output Barrel Shifter & Rotator:** Hardware support for shifting and rotating the ALU output result before it is written to the destination register in R-Type operations.
 *   **Centralized Status Register:** Global `Z` (Zero), `N` (Negative), `C` (Carry), and `V` (Overflow) flags for conditional branching, with a toggle to freeze flag states.
+*   **Hardware Memory Protection:** Native logical-to-physical address translation and boundary checking to isolate user programs from OS memory.
+*   **Automatic Context Saving:** Hardware automatically preserves ALU flags during interrupts/exceptions to prevent handlers from corrupting application state.
 
 ---
 
@@ -73,7 +75,7 @@ The unused register, shift parameters, and freeze bit form a 13-bit signed immed
 
 ### **Format J (J-Type): PC-Relative Branch and Jump Operations**
 **Trigger:** Category `01` (Branch), `Rs1_IMM` = `1`, `Rs2_IMM` = `1`.
-Converts bits following `Rd` into an 18-bit signed jump offset (±131,072 instructions, word-aligned).
+Encodes an 18-bit signed jump offset in bits [31:14] (±131,072 instructions, word-aligned).
 
 | Branch Offset [31:14] | Rd [13:9] | Rs2_IMM [8] | Rs1_IMM [7] | Opcode [6:0] |
 | :---: | :---: | :---: | :---: | :---: |
@@ -88,7 +90,7 @@ Converts bits following `Rd` into an 18-bit signed jump offset (±131,072 instru
 | :---: | :---: | :---: | :---: | :---: |
 | 18 Bits (Set to 0) | 5 Bits | `0` | `0` | 7 Bits |
 
-*   **Rs1 (Bits 13:9):** Target memory address to jump to.
+*   **Rs1 (Bits 13:9):** Target memory address register to jump to.
 
 ---
 
@@ -152,14 +154,14 @@ Converts bits following `Rd` into an 18-bit signed jump offset (±131,072 instru
 | `LW` | `10010` | **Load Word:** Reads a 32-bit word from `Rs1 + Imm` to `Rd`. |
 
 ### **Category 11: System & Custom Operations**
-*The 5-bit `Rd` field [13:9] acts as the CSR address index (0-31). `Rs1` [18:14] acts as the GPR source/destination.*
+*The 5-bit `Rd` field [13:9] acts as the CSR address index (0-31). `Rs1` [18:14] acts as the GPR source/destination. If `Rs1_IMM` is toggled to `1`, Format I-B is used and the 13-bit immediate acts as the source data.*
 
 | Mnemonic | Operation [6:2] | Format | Description |
 | :--- | :---: | :--- | :--- |
 | `CSRR` | `00000` | R-Type | **Read CSR:** Reads the value from the CSR at address `Rd` and writes it to GPR `Rs1`. |
-| `CSRW` | `00001` | R-Type | **Write CSR:** Writes the value from GPR `Rs1` into the CSR at address `Rd`. |
-| `CSRWI` | `00010` | I-Type A | **Write CSR Immediate:** Writes the 13-bit Immediate value to the lower 13 bits of the CSR at address `Rd`. |
-| `RETI` | `00011` | R-Type | **Return from Exception/Interrupt:** Restores the PC from the `EPC` register and sets `GIE` to 1. (All Reg/Shift fields must be 0). |
+| `CSRW` | `00001` | R-Type / I-B | **Write CSR:** Writes the value from GPR `Rs1` (or a 13-bit Immediate via Format I-B) into the CSR at address `Rd`. |
+| `RETI` | `00011` | R-Type | **Return from Exception/Interrupt:** Restores the PC from the `EPC` register, restores `STATUS` flags from `ESTATUS`, and sets `GIE` to 1. (All Reg/Shift fields must be 0). |
+| `ECALL` | `01000` | R-Type | **Environment Call:** Triggers a synchronous exception (Syscall). Sets `CAUSE` to `0x00000008`. (All Reg/Shift fields must be 0). |
 
 ---
 
@@ -169,12 +171,23 @@ Converts bits following `Rd` into an 18-bit signed jump offset (±131,072 instru
 *   **`NOP`:** `ADD R0, R0, #0`
 *   **`MOV Rd, Rs`:** `ADD Rd, Rs, #0` (I-Type A)
 *   **`NEG Rd, Rs`:** `SUB Rd, #0, Rs` (I-Type B)
-*   **`LI Rd, #imm32`:**
-    ```assembly
-    ADD R1, R0, #0x12         ; Load upper bits
-    ADD R1, R0, R1, LSL #12   ; Shift left by 12
-    ADD R1, R1, #0x345        ; Add lower bits
-    ```
+*   **`LUI Rd, #imm13` (Load Upper Immediate):**
+    *   **Expansion:** `ADD Rd, R0, #imm13, LSL #19`
+    *   **Function:** Places a 13-bit immediate into the upper 13 bits (bits 31:19) of the register, zeroing the lower 19 bits. Essential for building 32-bit memory addresses.
+*   **`LA Rd, label` (Load Address):**
+    *   **Expansion:** 
+        ```assembly
+        LUI Rd, #(label >> 19)
+        ADD Rd, Rd, #(label & 0x7FFFF) ; Assembler handles chunking if > 13 bits
+        ```
+*   **`LI Rd, #imm32` (Load 32-bit Immediate):**
+    *   **Expansion:** Chunks larger constants using shifts and adds.
+    *   **Example (`LI R1, #0x12345`):**
+        ```assembly
+        ADD R1, R0, #0x12         ; Load upper bits
+        ADD R1, R0, R1, LSL #12   ; ALU computes 0+R1=R1; Output Shifter shifts left by 12.
+        ADD R1, R1, #0x345        ; Add lower bits
+        ```
 
 ### **2. Stack Operations**
 *   **`PUSH Rs`:**
@@ -203,8 +216,8 @@ Converts bits following `Rd` into an 18-bit signed jump offset (±131,072 instru
 *   **`RET`:** `BR R30`
 
 ### **6. System & Interrupt Macros**
-*   **`EIC` (Enable Interrupts Globally):** `CSRWI 0x04, #1`
-*   **`DIC` (Disable Interrupts Globally):** `CSRWI 0x04, #0`
+*   **`EIC` (Enable Interrupts Globally):** `CSRW 0x04, #1`
+*   **`DIC` (Disable Interrupts Globally):** `CSRW 0x04, #0`
 
 ---
 
@@ -241,11 +254,12 @@ BEQ R0, #2048              ; If Z=1, jump forward 2048 instructions.
 B R30, #-4000              ; Jump back 4000, save return address to R30.
 ```
 
-**System Operations (CSRs):**
+**System Operations (CSRs & Syscalls):**
 ```assembly
 CSRR 0x00, R5              ; Read STATUS register (0x00) into R5.
 CSRW 0x03, R10             ; Write R10 to TVEC register (0x03).
-CSRWI 0x04, #1             ; Write 1 to GIE register.
+CSRW 0x04, #1              ; Write 1 to GIE register (Uses Format I-B immediate).
+ECALL                      ; Trigger Syscall exception (OS handles request).
 RETI                       ; Return from exception/interrupt.
 ```
 
@@ -258,16 +272,20 @@ RETI                       ; Return from exception/interrupt.
 | `0x00` | `STATUS` | **Status & Flags Register.** Bits [3:0]: `V`, `C`, `N`, `Z` flags. |
 | `0x01` | `EPC` | **Exception Program Counter.** Stores trapping instruction's PC upon exception/interrupt. `RETI` restores PC. |
 | `0x02` | `CAUSE` | **Trap Cause Register.** Bit [31]: `1` = Interrupt, `0` = Exception. Bits [30:0]: Exception/Interrupt Code. |
-| `0x03` | `TVEC` | **Trap Vector Base Address.** Memory address of the handler table. Hardware jumps to `TVEC + (Cause * 4)`. |
+| `0x03` | `TVEC` | **Trap Vector Base Address.** Memory address of the interrupt/exception handler. The processor hardware jumps directly to the address stored in `TVEC` upon any trap. |
 | `0x04` | `GIE` | **Global Interrupt Enable.** Bit [0]: `1` = Enabled, `0` = Disabled. |
 | `0x05` | `MTIME` | **Machine Timer.** Increments by 1 on every positive clock edge. |
 | `0x06` | `MTIMECMP` | **Machine Timer Compare.** Compared to `MTIME` on every positive clock edge. If `MTIMECMP < MTIME`, a Machine Timer interrupt is fired. |
+| `0x07` | `BOOT` | **Boot Mode Register.** Bit [0]: `1` = Boot Mode (memory accesses are redirected to ROM instead of RAM), `0` = Normal Mode. |
+| `0x08` | `ESTATUS` | **Exception Status Register.** Hardware automatically saves the `STATUS` flags (Z, N, C, V) here immediately upon trapping. `RETI` restores these flags back to `STATUS`. |
+| `0x09` | `UMEM_BASE` | **User Memory Base.** The hardware address decoder adds this value to the logical address generated by Load/Store instructions to calculate the physical RAM address. |
+| `0x0A` | `UMEM_LIMIT` | **User Memory Limit.** The hardware address decoder checks the logical address against this limit. If the address exceeds this limit, a memory protection exception is triggered to prevent user programs from accessing out-of-bounds RAM. |
 
 ### **CAUSE Register Values**
 
-| CAUSE Value (Hex) | Reason | 
-| :--- | :--- |
-| `0x80000001` | Machine Timer |
-| `0x80000002` | UART RX (Keyboard) |
-| `0x00000000` | Illegal Instruction |
-| `0x00000008` | ECALL (Syscall) |
+| CAUSE Value (Hex) | Exception/Interrupt Type | Description |
+| :--- | :--- | :--- |
+| `0x80000001` | Machine Timer Interrupt | Generated by the timer compare logic; used for preemptive multitasking and system timekeeping. |
+| `0x80000002` | External Interrupt (e.g., UART RX) | Generated by asynchronous peripheral devices to signal data availability and prevent input buffer overruns. |
+| `0x00000000` | Illegal Instruction Exception | Triggered when the processor decodes an invalid or undefined opcode, enabling fault handling for corrupted execution flows. |
+| `0x00000008` | Environment Call (Syscall) Exception | Triggered by the `ECALL` instruction to transition from user mode to supervisor mode for OS service requests. |
